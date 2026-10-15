@@ -8,6 +8,8 @@ NOW = datetime(2026, 10, 1, tzinfo=timezone.utc)
 GROUPS = ["jira-users", "confluence-users", "jira-admins", "bitbucket-users",
           "finance", "hr", "contractors", "legacy-sox-approvers"]
 
+CREATED_DAYS = 600  # every demo account is older than any default threshold
+
 # name, active, days since login (None = never), groups
 _USERS = [
     ("alice", True, 1, ["jira-users", "confluence-users", "jira-admins"]),
@@ -43,11 +45,13 @@ class DemoDirectory:
 
     def __init__(self):
         self._users = [User(n, n.replace("-", " ").title(), f"{n}@example.com", a,
-                            None if d is None else NOW - timedelta(days=d), sorted(g))
+                            None if d is None else NOW - timedelta(days=d), sorted(g),
+                            NOW - timedelta(days=CREATED_DAYS))
                        for n, a, d, g in _USERS]
 
     def users(self):
-        return [User(u.name, u.display_name, u.email, u.active, u.last_login, list(u.groups))
+        return [User(u.name, u.display_name, u.email, u.active, u.last_login, list(u.groups),
+                     u.created)
                 for u in self._users]
 
     def groups(self):

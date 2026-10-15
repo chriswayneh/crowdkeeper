@@ -11,11 +11,30 @@ All notable changes to this project are documented here. This project follows
   `seq` (restarts at 1 each run) and `run_id` (random per run), so `(run_id, seq)` identifies a change.
   The change's own fields sit under a nested `detail` object. `failed` lines add `stage`
   (`intent_log`, `change`, `applied_log`), `change_applied` (`true`, `false`, or `null` meaning
-  unknown, e.g. Ctrl-C during the Crowd call), `error` and `applied_before_failure`.
+  unknown: Ctrl-C, timeout, lost response or 5xx during the Crowd call; `false` only for a 4xx
+  rejection or a failed `intent` write), `error` and `applied_before_failure`.
   **Readers of the old one-line-per-change log must be updated.**
 - `auditlog.record` rejects reserved top-level field names (`ts`; `event`, `action` and `detail` are positional parameters and cannot be passed as extra fields).
 
+- **Breaking:** `CROWD_URL` must be `https://` (plain http only for localhost) and must not contain
+  credentials; the client refuses to start otherwise (was a warning).
+- **Breaking:** users with no recorded login are now `activity-unknown` (review) instead of
+  `inactive` (deactivate), and are only flagged once the account is older than `--days`.
+- `--days` must be a positive whole number (`audit`, `fix`, `report`, and the core API).
+- `jml` checks the whole CSV first (required `action`/`username` columns, extra values, unknown
+  groups, with line numbers) and makes no change if anything is wrong.
+- Prompts and status messages go to stderr; stdout carries only the selected output format.
+
 ### Fixed
+- `fix --apply` could deactivate brand-new accounts that had not logged in yet.
+- `jml`: several rows for one user are applied in order against the updated state (mover and back,
+  repeated joiner no longer creates twice).
+- `jml`: a missing `groups` column or truncated row no longer removes every mover membership; only
+  an explicitly empty `groups` value does.
+- `--apply` executes exactly the confirmed plan instead of re-planning after the prompt.
+- Membership reads now paginate past Crowd's 1,000-result page.
+- CLI error messages mask the app password and URL credentials.
+- `groups diff` rejects malformed snapshots with a clear error instead of a traceback.
 - `fix` and `jml` log every change already applied plus the failure when they stop partway, and
   exit with status 1 (including on Ctrl-C, without a traceback).
 - If the failure entry cannot be written, the original error is still printed to stderr.

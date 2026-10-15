@@ -11,3 +11,4 @@ class User:
     active: bool = True
     last_login: Optional[datetime] = None
     groups: list = field(default_factory=list)
+    created: Optional[datetime] = None  # account creation time, if known

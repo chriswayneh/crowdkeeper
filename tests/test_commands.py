@@ -19,7 +19,8 @@ def test_demo_size(d):
 def test_audit_finds_planted_problems(d):
     f = core.audit(d, 90, NOW)
     by = lambda t: {x["subject"] for x in f if x["type"] == t}
-    assert by("inactive") == {"frank", "heidi", "olivia", "rupert", "svc-backup"}
+    assert by("inactive") == {"frank", "heidi", "rupert", "svc-backup"}
+    assert by("activity-unknown") == {"olivia"}
     assert by("no-groups") == {"olivia", "victor", "svc-backup"}
     assert by("disabled-in-groups") == {"ivan", "mallory", "trent"}
     assert by("empty-group") == {"legacy-sox-approvers"}
@@ -75,7 +76,7 @@ def test_jml_cli_dry_run_default(tmp_path, capsys):
     c.write_text("action,username,groups\nleaver,alice,\n")
     log = tmp_path / "log.json"
     assert main(["--demo", "jml", str(c), "--apply", "-y", "--log", str(log)]) == 0
-    assert "Dry run" in capsys.readouterr().out
+    assert "Dry run" in capsys.readouterr().err
     assert not log.exists()
 
 
@@ -84,8 +85,8 @@ def test_fix_dry_run_and_demo_never_writes(d, capsys, tmp_path):
         core.Executor(d, apply=True)
     log = tmp_path / "l.json"
     assert main(["--demo", "fix", "--log", str(log)]) == 0
-    out = capsys.readouterr().out
-    assert "deactivate-user" in out and "Dry run: 10 change(s)" in out
+    cap = capsys.readouterr()
+    assert "deactivate-user" in cap.out and "Dry run: 9 change(s)" in cap.err
     assert not log.exists()
 
 
@@ -109,10 +110,10 @@ def test_fix_apply_writes_audit_log(tmp_path):
     ex = core.Executor(d, apply=True, log_path=str(log))
     core.fix(core.audit(d, 90, NOW), ex)
     entries = [json.loads(l) for l in log.read_text().splitlines()]
-    assert len(d.calls) == 10 and len(entries) == 20
+    assert len(d.calls) == 9 and len(entries) == 18
     assert all("ts" in e for e in entries)
     # every change: intent entry, then applied entry, same seq and detail
-    for i in range(0, 20, 2):
+    for i in range(0, 18, 2):
         a, b = entries[i], entries[i + 1]
         assert (a["event"], b["event"]) == ("intent", "applied")
         assert a["seq"] == b["seq"] == i // 2 + 1
@@ -148,7 +149,7 @@ def test_csv_output_neutralises_formulas():
 
 def test_jml_rejects_malformed_rows(d, tmp_path):
     with pytest.raises(ValueError, match="missing username"):
-        core.jml(d, [{"action": "joiner"}], core.Executor(d))
+        core.jml(d, [{"action": "joiner", "username": ""}], core.Executor(d))
     p = tmp_path / "bad.csv"
     p.write_text("foo,bar\n1,2\n")
     assert main(["--demo", "jml", str(p)]) == 1
@@ -157,7 +158,7 @@ def test_jml_rejects_malformed_rows(d, tmp_path):
 def test_confirm_eof_aborts(monkeypatch):
     from crowdkeeper import cli
 
-    def eof(_):
+    def eof(*_):
         raise EOFError
     monkeypatch.setattr("builtins.input", eof)
     assert cli._confirm(type("A", (), {"yes": False})(), 3) is False
@@ -167,10 +168,10 @@ def test_report_escapes_markdown():
     assert core.md_safe("a|b`c") == "a\\|b'c"
 
 
-def test_http_url_warns(caplog):
+def test_http_url_warns_for_localhost_only(caplog):
     from crowdkeeper.client import CrowdClient
-    CrowdClient("http://crowd.local", "app", "pw")
-    assert "not https" in caplog.text and "pw" not in caplog.text
+    CrowdClient("http://localhost:8095/crowd", "app", "pw")
+    assert "plain http" in caplog.text and "pw" not in caplog.text
 
 
 class FailingWritable(FakeWritable):
@@ -235,7 +236,7 @@ def test_jml_partial_failure_logged(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("CROWD_APP_PASSWORD", "secret-pw-123")
     d = FailingWritable(fail_at=2)
     name = next(u for u in d.users() if len(u.groups) >= 2).name
-    rows = [{"action": "joiner", "username": "newbie", "groups": "g-a g-b g-c"},
+    rows = [{"action": "joiner", "username": "newbie", "groups": "hr finance contractors"},
             {"action": "leaver", "username": name, "groups": ""}]
     log = tmp_path / "audit.json"
     ex = core.Executor(d, apply=True, log_path=str(log))
@@ -255,7 +256,7 @@ def test_cli_partial_failure_exits_nonzero(cmd, tmp_path, monkeypatch, capsys):
     if cmd == "fix":
         planner = lambda ex: core.fix(core.audit(d, 90, NOW), ex)
     else:
-        rows = [{"action": "joiner", "username": "newbie", "groups": "g-a g-b"}]
+        rows = [{"action": "joiner", "username": "newbie", "groups": "hr finance"}]
         planner = lambda ex: core.jml(d, rows, ex)
     assert cli._run_plan(args, d, planner) == 1
     err = capsys.readouterr().err
@@ -432,7 +433,7 @@ def test_change_failure_stage_not_applied(tmp_path):
     with pytest.raises(core.PartialFailure):
         ex.do("deactivate-user", d.deactivate, "bob", user="bob")
     fail = _entries(log)[-1]
-    assert fail["stage"] == "change" and fail["change_applied"] is False
+    assert fail["stage"] == "change" and fail["change_applied"] is None  # RuntimeError: unknown
 
 
 def test_interrupt_during_crowd_call_logs_change_applied_unknown(tmp_path):
@@ -449,10 +450,12 @@ def test_interrupt_during_crowd_call_logs_change_applied_unknown(tmp_path):
     assert failed["change_applied"] is None
 
 
-def test_ordinary_crowd_error_logs_change_applied_false(tmp_path):
+def test_crowd_4xx_rejection_logs_change_applied_false(tmp_path):
+    from crowdkeeper.client import CrowdError
+
     class Broken(FakeWritable):
         def deactivate(self, u):
-            raise RuntimeError("boom")
+            raise CrowdError("PUT /user -> HTTP 400", 400)
     d = Broken()
     log = tmp_path / "audit.json"
     ex = core.Executor(d, apply=True, log_path=str(log))
@@ -472,3 +475,235 @@ def test_record_rejects_reserved_field_names(tmp_path, name):
 def test_version_is_0_2_0():
     import crowdkeeper
     assert crowdkeeper.__version__ == "0.2.0"
+
+
+# ---- Codex review findings ----------------------------------------------------------------
+
+from datetime import timedelta  # noqa: E402
+
+from crowdkeeper.models import User  # noqa: E402
+
+
+class OneUser(FakeWritable):
+    def __init__(self, user):
+        super().__init__()
+        self._users = [user]
+
+
+def test_f1_new_account_without_login_is_not_deactivated(tmp_path):
+    d = OneUser(User("newbie", groups=["jira-users"], created=NOW - timedelta(days=2)))
+    f = core.audit(d, 90, NOW)
+    assert not [x for x in f if x["subject"] == "newbie"]
+    ex = core.Executor(d, apply=True, log_path=str(tmp_path / "a.json"))
+    core.fix(f, ex)
+    assert d.calls == []
+
+
+@pytest.mark.parametrize("created", [None, NOW - timedelta(days=400)])
+def test_f1_missing_last_login_is_review_not_deactivate(tmp_path, created):
+    d = OneUser(User("ghost", groups=["jira-users"], created=created))
+    f = core.audit(d, 90, NOW)
+    assert [(x["type"], x["fix"]) for x in f if x["subject"] == "ghost"] == [("activity-unknown", "review")]
+    core.fix(f, core.Executor(d, apply=True, log_path=str(tmp_path / "a.json")))
+    assert d.calls == []
+
+
+class JmlWritable(FakeWritable):
+    def add_user(self, *a):
+        self.calls.append(("create",) + a[:1])
+
+    def add_to_group(self, u, g):
+        self.calls.append(("add", u, g))
+
+
+def test_f2_sequential_mover_rows_use_updated_state(d):
+    rows = [{"action": "mover", "username": "bob", "groups": "confluence-users"},
+            {"action": "mover", "username": "bob", "groups": "bitbucket-users jira-users"}]
+    plan = core.jml(d, rows, core.Executor(d))
+    acts = [(p["action"], p["group"]) for p in plan]
+    assert acts == [("remove-from-group", "bitbucket-users"), ("remove-from-group", "jira-users"),
+                    ("add-to-group", "confluence-users"),
+                    ("remove-from-group", "confluence-users"),
+                    ("add-to-group", "bitbucket-users"), ("add-to-group", "jira-users")]
+
+
+def test_f2_repeated_joiner_creates_once(d):
+    rows = [{"action": "joiner", "username": "neo", "groups": "hr"},
+            {"action": "joiner", "username": "neo", "groups": "hr finance"}]
+    plan = core.jml(d, rows, core.Executor(d))
+    assert [(p["action"], p.get("group")) for p in plan] == [
+        ("create-user", None), ("add-to-group", "hr"), ("add-to-group", "finance")]
+
+
+def test_f3_missing_groups_column_leaves_memberships(d, tmp_path):
+    assert core.jml(d, [{"action": "mover", "username": "bob"}], core.Executor(d),
+                    ["action", "username"]) == []
+    p = tmp_path / "j.csv"
+    p.write_text("action,username\nmover,bob\n")
+    assert main(["--demo", "jml", str(p), "-o", "json"]) == 0
+
+
+def test_f3_truncated_row_leaves_memberships_explicit_empty_removes(d):
+    cols = ["action", "username", "groups"]
+    # csv.DictReader gives None for a truncated row's missing value
+    assert core.jml(d, [{"action": "mover", "username": "bob", "groups": None}],
+                    core.Executor(d), cols) == []
+    plan = core.jml(d, [{"action": "mover", "username": "bob", "groups": ""}],
+                    core.Executor(d), cols)
+    assert {p["action"] for p in plan} == {"remove-from-group"} and len(plan) == 2
+
+
+def test_f3_missing_required_header(d, tmp_path):
+    with pytest.raises(ValueError, match="missing required column"):
+        core.jml(d, [{"username": "bob"}], core.Executor(d), ["username"])
+    p = tmp_path / "j.csv"
+    p.write_text("action,user\nmover,bob\n")
+    assert main(["--demo", "jml", str(p)]) == 1
+
+
+@pytest.mark.parametrize("url", ["http://crowd.example.com", "ftp://crowd.example.com",
+                                 "crowd.example.com", "http://127.0.0.2"])
+def test_f4_plain_http_rejected_before_any_request(url, monkeypatch):
+    import requests
+    from crowdkeeper.client import CrowdClient, CrowdError
+    monkeypatch.setattr(requests.Session, "request",
+                        lambda *a, **k: pytest.fail("request was sent"))
+    with pytest.raises(CrowdError, match="https"):
+        CrowdClient(url, "app", "pw")
+
+
+@pytest.mark.parametrize("url", ["https://crowd.example.com", "http://localhost:8095",
+                                 "http://127.0.0.1", "http://[::1]:8095"])
+def test_f4_https_and_localhost_allowed(url):
+    from crowdkeeper.client import CrowdClient
+    CrowdClient(url, "app", "pw")
+
+
+def test_f5_timeout_after_commit_logs_unknown(tmp_path):
+    import requests
+
+    class CommitThenTimeout(FakeWritable):
+        def deactivate(self, u):
+            super().deactivate(u)  # Crowd committed it ...
+            raise requests.Timeout("read timed out")  # ... but the response was lost
+    d = CommitThenTimeout()
+    log = tmp_path / "a.json"
+    with pytest.raises(core.PartialFailure):
+        core.Executor(d, apply=True, log_path=str(log)).do(
+            "deactivate-user", d.deactivate, "bob", user="bob")
+    assert _entries(log)[-1]["change_applied"] is None
+
+
+def test_f6_apply_executes_only_the_confirmed_plan(tmp_path, monkeypatch):
+    from crowdkeeper import cli
+    d = JmlWritable()
+    rows = [{"action": "mover", "username": "bob", "groups": "jira-users"}]
+    planned = []
+
+    def planner(ex):
+        planned.append(1)
+        if len(planned) > 1:  # state changed between preview and apply
+            ex.do("remove-from-group", d.remove_from_group, "alice", "jira-admins",
+                  user="alice", group="jira-admins")
+        return core.jml(d, rows, ex)
+    monkeypatch.setattr(cli, "_confirm", lambda a, n: True)
+    args = type("A", (), {"apply": True, "output": "table",
+                          "log": str(tmp_path / "a.json"), "yes": True})()
+    assert cli._run_plan(args, d, planner) == 0
+    assert planned == [1] and d.calls == [("remove", "bob", "bitbucket-users")]
+
+
+def _client(monkeypatch, pages):
+    from crowdkeeper.client import CrowdClient
+    c = CrowdClient("https://crowd.example.com", "app", "pw")
+    seen = []
+
+    def fake(method, path, **kw):
+        seen.append(kw["params"]["start-index"])
+        return pages[len(seen) - 1]
+    monkeypatch.setattr(c, "_req", fake)
+    return c, seen
+
+
+@pytest.mark.parametrize("sizes", [[3, 1], [3, 3, 0], [2]])
+def test_f7_membership_reads_paginate(monkeypatch, sizes):
+    pages, n = [], 0
+    for s in sizes:
+        pages.append({"groups": [{"name": f"g{n + i:03}"} for i in range(s)]})
+        n += s
+    c, seen = _client(monkeypatch, pages)
+    got = c._direct_groups("bob", page=3)
+    assert got == [f"g{i:03}" for i in range(n)]
+    assert seen == [i * 3 for i in range(len(sizes))]
+
+
+def test_f8_url_credentials_rejected_and_never_printed(monkeypatch, capsys):
+    monkeypatch.setenv("CROWD_URL", "https://app:hunter2-secret@crowd.example.com")
+    monkeypatch.setenv("CROWD_APP", "app")
+    monkeypatch.setenv("CROWD_APP_PASSWORD", "pw-abc-123")
+    assert main(["audit"]) == 1
+    err = capsys.readouterr().err
+    assert "credentials" in err and "hunter2-secret" not in err
+
+
+def test_f8_cli_errors_are_scrubbed(monkeypatch, capsys):
+    from crowdkeeper import cli
+    from crowdkeeper.client import CrowdError
+    monkeypatch.setenv("CROWD_APP_PASSWORD", "pw-abc-123")
+
+    def boom(args):
+        raise CrowdError("GET https://u:pw-abc-123@crowd.example/x failed pw-abc-123")
+    monkeypatch.setattr(cli, "_dir", boom)
+    assert main(["audit"]) == 1
+    assert "pw-abc-123" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("days", ["0", "-1", "abc"])
+def test_f9_days_must_be_positive(days, capsys):
+    for cmd in ("audit", "fix", "report"):
+        with pytest.raises(SystemExit):
+            main(["--demo", cmd, "--days", days])
+    with pytest.raises(ValueError):
+        core.audit(DemoDirectory(), -1, NOW)
+    with pytest.raises(ValueError):
+        core.report(DemoDirectory(), 0, NOW)
+
+
+def test_f10_unknown_target_group_means_zero_writes(tmp_path):
+    d = JmlWritable()
+    rows = [{"action": "mover", "username": "bob", "groups": "jira-users"},
+            {"action": "mover", "username": "carol", "groups": "jira-users finanse"}]
+    with pytest.raises(ValueError, match="line 3: unknown group 'finanse'"):
+        core.jml(d, rows, core.Executor(d, apply=True, log_path=str(tmp_path / "a.json")))
+    assert d.calls == [] and not (tmp_path / "a.json").exists()
+
+
+@pytest.mark.parametrize("argv", [["fix"], ["fix", "--apply", "-y"]])
+def test_f11_stdout_is_pure_json(argv, capsys):
+    assert main(["--demo", *argv, "-o", "json"]) == 0
+    assert isinstance(json.loads(capsys.readouterr().out), list)
+
+
+def test_f11_apply_and_abort_keep_stdout_pure(tmp_path, monkeypatch, capsys):
+    from crowdkeeper import cli
+    d = FakeWritable()
+    planner = lambda ex: core.fix(core.audit(d, 90, NOW), ex)
+    for ok in (True, False):
+        monkeypatch.setattr(cli, "_confirm", lambda a, n, ok=ok: ok)
+        args = type("A", (), {"apply": True, "output": "json",
+                              "log": str(tmp_path / "a.json"), "yes": True})()
+        assert cli._run_plan(args, d, planner) == 0
+        assert isinstance(json.loads(capsys.readouterr().out), list)
+
+
+@pytest.mark.parametrize("bad", [{}, [], {"groups": []}, {"groups": {"g": "alice"}},
+                                 {"groups": {"g": [1]}}])
+def test_f12_malformed_snapshots_rejected(bad, tmp_path, capsys):
+    good = {"groups": {"g": ["alice"]}}
+    with pytest.raises(ValueError, match="snapshot"):
+        core.diff_groups(good, bad)
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    a.write_text(json.dumps(good))
+    b.write_text(json.dumps(bad))
+    assert main(["groups", "diff", str(a), str(b)]) == 1
+    assert "Traceback" not in capsys.readouterr().err

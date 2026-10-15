@@ -6,17 +6,34 @@ import json
 from datetime import datetime, timezone
 
 from . import auditlog
+from .models import User
+
+
+def check_days(days):
+    if not isinstance(days, int) or isinstance(days, bool) or days < 1:
+        raise ValueError(f"days must be a positive whole number, got {days!r}")
+    return days
 
 
 def audit(directory, days=90, now=None):
+    check_days(days)
     now = now or datetime.now(timezone.utc)
     users, groups = directory.users(), directory.groups()
     findings = []
     for u in users:
-        if u.active and (u.last_login is None or (now - u.last_login).days >= days):
-            seen = "never" if u.last_login is None else f"{(now - u.last_login).days}d ago"
+        if u.active and u.last_login is not None and (now - u.last_login).days >= days:
             findings.append({"type": "inactive", "subject": u.name,
-                             "detail": f"last login {seen}", "fix": "deactivate"})
+                             "detail": f"last login {(now - u.last_login).days}d ago",
+                             "fix": "deactivate"})
+        elif u.active and u.last_login is None:
+            # No lastAuthenticated: activity is UNKNOWN (new account, or Crowd never recorded
+            # it, e.g. SSO/remembered sessions). Never auto-deactivate; flag for review only
+            # once the account is older than the threshold (or its age is unknown).
+            age = None if u.created is None else (now - u.created).days
+            if age is None or age >= days:
+                seen = "created date unknown" if age is None else f"account {age}d old"
+                findings.append({"type": "activity-unknown", "subject": u.name,
+                                 "detail": f"no recorded login ({seen})", "fix": "review"})
         if u.active and not u.groups:
             findings.append({"type": "no-groups", "subject": u.name,
                              "detail": "active user in no groups", "fix": "review"})
@@ -71,8 +88,18 @@ def export_groups(directory):
     return {"groups": {g: sorted(v) for g, v in sorted(m.items())}}
 
 
+def _snapshot_groups(snap, which):
+    if not isinstance(snap, dict) or not isinstance(snap.get("groups"), dict):
+        raise ValueError(f"{which} snapshot: expected an object with a 'groups' mapping "
+                         "(made by `crowdkeeper groups export`)")
+    for g, members in snap["groups"].items():
+        if not isinstance(members, list) or not all(isinstance(m, str) for m in members):
+            raise ValueError(f"{which} snapshot: group {g!r} must map to a list of usernames")
+    return snap["groups"]
+
+
 def diff_groups(a, b):
-    ga, gb = a["groups"], b["groups"]
+    ga, gb = _snapshot_groups(a, "first"), _snapshot_groups(b, "second")
     rows = []
     for g in sorted(set(ga) | set(gb)):
         if g not in ga:
@@ -98,6 +125,12 @@ class PartialFailure(Exception):
                          f"{auditlog.safe_error(error)}")
 
 
+def _rejected(e):
+    """True when the directory definitely refused the change (it was never made)."""
+    status = getattr(e, "status", None)
+    return isinstance(status, int) and 400 <= status < 500
+
+
 class Executor:
     """Plans changes; performs them only when apply=True on a writable directory.
 
@@ -109,6 +142,7 @@ class Executor:
             raise PermissionError("demo mode never writes; drop --apply or --demo")
         self.d, self.apply, self.log_path, self.plan = directory, apply, log_path, []
         self.applied = 0
+        self.ops = []  # (action, fn, args, details): the exact plan, replayable by execute()
         self.seq = 0
         self.log_error = None
         self.run_id = uuid.uuid4().hex  # seq restarts each run; (run_id, seq) is unique
@@ -116,16 +150,17 @@ class Executor:
     def _fail(self, action, details, e, seq, stage):
         # stage: intent_log (change not attempted), change (call failed),
         # applied_log (the change WAS made; only its "applied" line failed to write).
-        # change_applied: True for applied_log, None (unknown) when an interrupt hit during the
-        # Crowd call (Crowd may already have made the change), otherwise False.
+        # change_applied: True for applied_log; False only when the change provably did not
+        # happen (intent_log, or Crowd answered with a 4xx rejection); otherwise None (unknown):
+        # an interrupt, timeout, lost response or 5xx may come after Crowd committed the change.
         # applied_before_failure counts every change made so far, incl. this one if change_applied.
         log_error = None
         if stage == "applied_log":
             applied = True
-        elif stage == "change" and not isinstance(e, Exception):
-            applied = None  # interrupted mid-call: outcome in Crowd is unknown
-        else:
+        elif stage == "intent_log" or _rejected(e):
             applied = False
+        else:
+            applied = None
         try:
             auditlog.record(self.log_path, "failed", action, details, seq=seq, run_id=self.run_id,
                             stage=stage, change_applied=applied,
@@ -139,8 +174,15 @@ class Executor:
             raise e
         raise PartialFailure(action, details, e, self.applied, log_error) from e
 
+    def execute(self, ops):
+        """Apply an already-approved plan exactly as previewed (no re-planning)."""
+        for action, fn, args, details in ops:
+            self.do(action, fn, *args, **details)
+        return self.plan
+
     def do(self, action, fn, *args, **details):
         self.plan.append({"action": action, **details})
+        self.ops.append((action, fn, args, details))
         if not self.apply:
             return
         self.seq += 1
@@ -160,38 +202,78 @@ class Executor:
             self._fail(action, details, e, seq, "applied_log")
 
 
-def jml(directory, rows, ex):
+JML_REQUIRED = ("action", "username")
+
+
+def _groups_of(r):
+    """None = groups column missing/blank-by-truncation (don't touch groups);
+    [] = column present but explicitly empty (for movers: remove every membership)."""
+    v = r.get("groups")
+    if v is None:
+        return None
+    return [g for g in v.replace(";", " ").split() if g]
+
+
+def validate_jml(rows, fieldnames, known_groups):
+    """Check the whole CSV before any change is planned; raise ValueError with line numbers."""
+    missing = [c for c in JML_REQUIRED if c not in (fieldnames or [])]
+    if missing:
+        raise ValueError(f"CSV header is missing required column(s): {', '.join(missing)}")
+    known, errors = set(known_groups), []
+    for i, r in enumerate(rows, start=2):
+        if None in r:
+            errors.append(f"line {i}: more values than header columns")
+        for g in _groups_of(r) or []:
+            if g not in known:
+                errors.append(f"line {i}: unknown group {g!r}")
+    if errors:
+        raise ValueError("invalid JML CSV, nothing changed:\n  " + "\n  ".join(errors))
+
+
+def jml(directory, rows, ex, fieldnames=None):
+    """Rows are applied in order against a projected state, so several rows for one user
+    (e.g. mover then mover back, or joiner twice) see the effect of the earlier rows."""
+    if fieldnames is None:
+        fieldnames = list(rows[0].keys()) if rows else list(JML_REQUIRED)
+    validate_jml(rows, fieldnames, directory.groups())
     users = {u.name: u for u in directory.users()}
     for i, r in enumerate(rows, start=2):
         kind = (r.get("action") or "").strip().lower()
         name = (r.get("username") or "").strip()
         if not name:
             raise ValueError(f"CSV line {i}: missing username")
-        groups = [g for g in (r.get("groups") or "").replace(";", " ").split() if g]
+        groups = _groups_of(r)
         cur = users.get(name)
         if kind == "joiner":
             if not cur:
-                ex.do("create-user", ex.d.add_user, name, r.get("display_name", ""),
-                      r.get("email", ""), user=name)
-            for g in groups:
-                if not cur or g not in cur.groups:
+                ex.do("create-user", ex.d.add_user, name, r.get("display_name") or "",
+                      r.get("email") or "", user=name)
+                cur = users[name] = User(name, r.get("display_name") or "", r.get("email") or "")
+            for g in groups or []:
+                if g not in cur.groups:
                     ex.do("add-to-group", ex.d.add_to_group, name, g, user=name, group=g)
+                    cur.groups = sorted(cur.groups + [g])
         elif kind == "mover":
             if not cur:
-                raise ValueError(f"mover {name}: no such user")
+                raise ValueError(f"CSV line {i}: mover {name}: no such user")
+            if groups is None:  # no groups value: leave memberships alone
+                continue
             for g in sorted(set(cur.groups) - set(groups)):
                 ex.do("remove-from-group", ex.d.remove_from_group, name, g, user=name, group=g)
             for g in sorted(set(groups) - set(cur.groups)):
                 ex.do("add-to-group", ex.d.add_to_group, name, g, user=name, group=g)
+            cur.groups = sorted(set(groups))
         elif kind == "leaver":
             if not cur:
-                raise ValueError(f"leaver {name}: no such user")
+                raise ValueError(f"CSV line {i}: leaver {name}: no such user")
             for g in cur.groups:
                 ex.do("remove-from-group", ex.d.remove_from_group, name, g, user=name, group=g)
+            cur.groups = []
             if cur.active:
                 ex.do("deactivate-user", ex.d.deactivate, name, user=name)
+                cur.active = False
         else:
-            raise ValueError(f"unknown action {kind!r} for {name}")
+            raise ValueError(f"CSV line {i}: unknown action {kind!r} for {name}")
     return ex.plan
 
 
@@ -209,6 +291,7 @@ def fix(findings, ex):
 
 def report(directory, days=90, now=None):
     now = now or datetime.now(timezone.utc)
+    check_days(days)
     users, groups = directory.users(), directory.groups()
     f = audit(directory, days, now)
     count = lambda t: sum(1 for x in f if x["type"] == t)
@@ -218,6 +301,7 @@ def report(directory, days=90, now=None):
              f"| Users | {len(users)} |", f"| Active users | {sum(u.active for u in users)} |",
              f"| Groups | {len(groups)} |",
              f"| Inactive users (>= {days}d) | {count('inactive')} |",
+             f"| Active users with unknown login activity | {count('activity-unknown')} |",
              f"| Active users with no groups | {count('no-groups')} |",
              f"| Disabled users still in groups | {count('disabled-in-groups')} |",
              f"| Empty groups | {count('empty-group')} |", "", "## Findings", ""]

@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timezone
 
 import requests
+from urllib.parse import urlsplit
 
 from .models import User
 
@@ -12,7 +13,31 @@ BASE = "/rest/usermanagement/1"
 
 
 class CrowdError(RuntimeError):
-    pass
+    def __init__(self, msg, status=None):
+        super().__init__(msg)
+        self.status = status  # HTTP status, when Crowd answered
+
+
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def check_url(url):
+    """Require https (plain http only for localhost) and no credentials in the URL."""
+    try:
+        u = urlsplit(url)
+        host = u.hostname
+    except ValueError:
+        raise CrowdError("CROWD_URL is not a valid URL") from None
+    if u.username or u.password or "@" in u.netloc:
+        raise CrowdError("CROWD_URL must not contain credentials; use CROWD_APP and "
+                         "CROWD_APP_PASSWORD")
+    if u.scheme == "https" and host:
+        return
+    if u.scheme == "http" and host in LOCAL_HOSTS:
+        log.warning("CROWD_URL is plain http to localhost; use https anywhere else")
+        return
+    raise CrowdError("CROWD_URL must be https:// (plain http is allowed only for localhost), "
+                     "so the application password is never sent unencrypted")
 
 
 class CrowdClient:
@@ -21,8 +46,7 @@ class CrowdClient:
     def __init__(self, url, app, password, timeout=30):
         if not (url and app and password):
             raise CrowdError("Set CROWD_URL, CROWD_APP and CROWD_APP_PASSWORD (or use --demo).")
-        if not url.lower().startswith("https://"):
-            log.warning("CROWD_URL is not https; the application password will be sent in clear text")
+        check_url(url)
         self.url = url.rstrip("/") + BASE
         self.s = requests.Session()
         self.s.auth = (app, password)  # never logged
@@ -38,7 +62,7 @@ class CrowdClient:
         log.debug("%s %s params=%s", method, path, kw.get("params"))
         r = self.s.request(method, self.url + path, timeout=self.timeout, **kw)
         if r.status_code >= 400:
-            raise CrowdError(f"{method} {path} -> HTTP {r.status_code}")
+            raise CrowdError(f"{method} {path} -> HTTP {r.status_code}", r.status_code)
         return r.json() if r.content else None
 
     def _search(self, entity):
@@ -59,13 +83,26 @@ class CrowdClient:
                 return datetime.fromtimestamp(int(a["values"][0]) / 1000, tz=timezone.utc)
         return None
 
+    def _direct_groups(self, name, page=1000):
+        out, start = [], 0
+        while True:
+            d = self._req("GET", "/user/group/direct", params={
+                "username": name, "start-index": start, "max-results": page}) or {}
+            items = d.get("groups", [])
+            out += [x["name"] for x in items]
+            if len(items) < page:
+                return sorted(out)
+            start += page
+
     def users(self):
         res = []
         for u in self._search("user"):
             n = u["name"]
-            g = self._req("GET", "/user/group/direct", params={"username": n}) or {}
+            created = u.get("created-date")
             res.append(User(n, u.get("display-name", ""), u.get("email", ""), u.get("active", True),
-                            self._last_login(n), sorted(x["name"] for x in g.get("groups", []))))
+                            self._last_login(n), self._direct_groups(n),
+                            None if created is None else
+                            datetime.fromtimestamp(int(created) / 1000, tz=timezone.utc)))
         return res
 
     def groups(self):

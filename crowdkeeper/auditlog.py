@@ -23,7 +23,12 @@ def record(path, event, action, detail=None, **fields):
 
 def safe_error(exc):
     """Error text for the log: exception type and message, with secrets scrubbed."""
-    msg = f"{type(exc).__name__}: {exc}"
+    return scrub(f"{type(exc).__name__}: {exc}")
+
+
+def scrub(msg):
+    """Mask the app password and URL-embedded credentials in any text shown or logged."""
+    msg = str(msg)
     pw = os.environ.get("CROWD_APP_PASSWORD")
     if pw:
         msg = msg.replace(pw, "***")
