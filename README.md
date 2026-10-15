@@ -28,7 +28,7 @@ Requires Python 3.10 or newer. `--demo` uses a built-in fake directory, so no Cr
 | `audit [--days N] [-o table\|json\|csv]` | Inactive users (last login N+ days ago), users with no recorded login (flagged for review, never auto-deactivated), active users with no groups, disabled users still in groups, empty groups |
 | `groups export [-f FILE]` | Dump group membership as JSON |
 | `groups diff A B` | Show access drift (granted/revoked/group added/removed) between two exports |
-| `jml FILE.csv [--apply]` | Joiners (create + add groups), movers (set groups), leavers (strip groups + deactivate) |
+| `jml FILE.csv [--apply]` | Joiners (create + add groups), movers (set groups), leavers (deactivate, then strip groups) |
 | `fix [--apply]` | Apply the audit's recommended cleanups (deactivate inactive, strip groups from disabled users) |
 | `report [-f FILE]` | One-page Markdown summary for auditors |
 
@@ -37,13 +37,22 @@ Requires Python 3.10 or newer. `--demo` uses a built-in fake directory, so no Cr
 passed, the prompt refuses, nothing is changed, and the command exits with status 2 so cron and CI
 see a failure. Declining at an interactive prompt still exits 0. Every applied change is appended to the audit log (`--log`, default
 `crowdkeeper-audit.json`) as JSON lines. Password fields are never logged.
+Right before applying, crowdkeeper reads the directory again and re-plans; if the plan differs from
+the one you confirmed (someone changed a user or group in the meantime), it stops with exit 1 and
+changes nothing, so run the command again to review the new plan. A change made after that re-check
+and during the apply itself is not detected.
+
+**Membership is direct group memberships only.** crowdkeeper reads and changes direct memberships
+(`/user/group/direct`). Access a user gets through nested groups is not shown by `audit`, `report` or
+`groups export`, and a leaver keeps any nested-group access until the parent membership is removed
+(deactivation still blocks login).
 
 **Exit codes:**
 
 | Code | Meaning |
 |---|---|
 | 0 | Success, a dry run, nothing to do, or declined at the interactive prompt |
-| 1 | A Crowd, network or file error, an invalid `groups diff` snapshot, or a partial apply (including Ctrl-C during `--apply`) |
+| 1 | A Crowd, network or file error (including a redirect, a non-2xx answer or a malformed response), an invalid `groups diff` snapshot, the directory changing between the confirmed preview and the apply (nothing changed), or a partial apply (including Ctrl-C during `--apply`) |
 | 2 | A usage error (bad arguments, from argparse), a malformed JML CSV (empty file with no header, a duplicate, blank or missing required header, broken quoting, a row with more or fewer values than the header, text that isn't UTF-8, or a control or invisible character such as NUL, tab, ESC, U+202E or U+200B in any field), an invalid JML row (unknown action or group, missing username, a mover or leaver who doesn't exist), or `--apply` on non-TTY stdin without `-y` |
 
 **Audit log format:** each change writes two lines. An `intent` line is written *before* the change
@@ -80,8 +89,8 @@ updates on some logins (SSO and remembered sessions in connected apps may not up
 no recorded login is reported as `activity-unknown` (review) once the account is older than `--days`
 (or its creation date is unknown), and `fix` never deactivates them. `--days` must be at least 1.
 
-**Approved plan only:** `--apply` executes exactly the plan you confirmed; it does not re-read Crowd and
-re-plan after the prompt. Prompts and status messages go to stderr, so stdout is just the table/JSON/CSV.
+**Approved plan only:** `--apply` executes exactly the plan you confirmed, after re-reading Crowd to check
+it is still current (drift exits 1 and nothing changes). Prompts and status messages go to stderr, so stdout is just the table/JSON/CSV.
 Output is terminal-safe: in the table and CSV formats, the Markdown report and error messages,
 tabs, line breaks and every control, bidi, zero-width or line/paragraph separator character in a
 name are shown as Python-style escapes (`\t`, `\n`, `\u001b`, `\u202e`), and a literal backslash
@@ -94,7 +103,10 @@ text: no links (every `.` is escaped and each `@` is put in a code span, so URLs
 e-mail addresses don't autolink), no emphasis and no HTML.
 
 JML CSV format (`groups` separated by `;` or spaces; for movers it's the full target set). The
-`action` and `username` columns are required. The file must be UTF-8 (a leading BOM is fine). The CSV is parsed strictly: an empty file, a duplicate, blank or missing required column header (for
+`action` and `username` columns are required; the only allowed columns are `action`, `username`,
+`display_name`, `email` and `groups` (spaces around a header name are ignored, and any other column
+is rejected with exit 2, so a misspelled `group` can't be silently ignored). A leaver is deactivated
+first and then removed from each group, so a failed removal never leaves the account active. The file must be UTF-8 (a leading BOM is fine). The CSV is parsed strictly: an empty file, a duplicate, blank or missing required column header (for
 example two `groups` columns), broken quoting (an unclosed `"`, or text after a closing quote),
 a row with more or fewer values than the header (write empty cells as `,,`), bytes that aren't
 UTF-8, or a control or invisible character (NUL, tab, ESC, a line break inside quotes, bidi or
@@ -148,6 +160,12 @@ how to report a vulnerability privately.
 
 The Crowd client (`crowdkeeper/client.py`) is written directly on `requests` against
 `/rest/usermanagement/1`, because there is no maintained Python Crowd client worth depending on.
+It never follows redirects: any answer other than 2xx (a 3xx to a login page included) is an error,
+so a change is only logged as applied when Crowd confirmed it. A response that doesn't have the
+expected shape (for example no `users` or `groups` list) is an error too, never an empty result.
+Deactivation sends Crowd only the user's name, first and last name, display name, e-mail and
+`active: false`, not the whole fetched record; Crowd has no conditional update for users, so a
+profile edit made at the same moment can still be overwritten.
 
 ### Sample output
 

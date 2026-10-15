@@ -2,7 +2,7 @@
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 import requests
@@ -40,6 +40,37 @@ def check_url(url, insecure=False):
     )
 
 
+def _items(d, key, what):
+    """Return d[key] as a list of objects that each have a string "name", or raise CrowdError:
+    a malformed answer must never read as an empty (clean) result."""
+    items = d.get(key) if isinstance(d, dict) else None
+    if not isinstance(items, list) or not all(
+        isinstance(x, dict) and isinstance(x.get("name"), str) for x in items
+    ):
+        raise CrowdError(f"unexpected Crowd response for {what}: expected a {key!r} list of named objects")
+    return items
+
+
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+_MAX_MS = 253402300799999  # 9999-12-31T23:59:59.999Z
+
+
+def _ms(v, what):
+    """A Crowd millisecond timestamp (int, or a decimal string for attribute values) as UTC datetime."""
+    if isinstance(v, str) and v.isascii() and v.isdigit() and len(v) <= len(str(_MAX_MS)):
+        v = int(v)  # capped first: int() on a huge digit string is slow and can raise ValueError
+    if type(v) is not int or not 0 <= v <= _MAX_MS:
+        raise CrowdError(f"unexpected Crowd response for {what}: not a valid timestamp")
+    return _EPOCH + timedelta(milliseconds=v)  # exact; float division loses sub-ms precision
+
+
+def _str(u, key, what):
+    v = u.get(key, "")
+    if not isinstance(v, str):
+        raise CrowdError(f"unexpected Crowd response for {what}: {key!r} is not a string")
+    return v
+
+
 class CrowdClient:
     writable = True
 
@@ -64,10 +95,17 @@ class CrowdClient:
 
     def _req(self, method, path, **kw):
         log.debug("%s %s params=%s", method, path, kw.get("params"))
-        r = self.s.request(method, self.url + path, timeout=self.timeout, **kw)
-        if r.status_code >= 400:
+        # never follow redirects: a 3xx (e.g. to a login page) must not count as success
+        r = self.s.request(method, self.url + path, timeout=self.timeout, allow_redirects=False, **kw)
+        if not 200 <= r.status_code < 300:
             raise CrowdError(f"{method} {path} -> HTTP {r.status_code}", r.status_code)
-        return r.json() if r.content else None
+        if not r.content:
+            return None
+        try:
+            return r.json()
+        except ValueError:  # e.g. an HTML login page served with 200
+            msg = f"unexpected Crowd response for {method} {path}: not JSON"
+            raise CrowdError(msg, r.status_code) from None
 
     def _search(self, entity):
         out, start = [], 0
@@ -77,7 +115,7 @@ class CrowdClient:
                 "/search",
                 params={"entity-type": entity, "expand": entity, "start-index": start, "max-results": 1000},
             )
-            items = d.get(entity + "s", [])
+            items = _items(d, entity + "s", f"{entity} search")
             out += items
             if len(items) < 1000:
                 return out
@@ -85,23 +123,27 @@ class CrowdClient:
 
     def _last_login(self, name):
         d = self._req("GET", "/user/attribute", params={"username": name})
-        for a in (d or {}).get("attributes", []):
-            if a.get("name") == "lastAuthenticated" and a.get("values"):
-                return datetime.fromtimestamp(int(a["values"][0]) / 1000, tz=timezone.utc)
+        if d is None or (isinstance(d, dict) and "attributes" not in d):
+            return None  # no attributes recorded: login activity unknown (flagged for review only)
+        for a in _items(d, "attributes", f"attributes of {name}"):
+            if a.get("name") == "lastAuthenticated":
+                vals = a.get("values")
+                if not isinstance(vals, list) or not vals:
+                    raise CrowdError(
+                        f"unexpected Crowd response for lastAuthenticated of {name}: no values list"
+                    )
+                return _ms(vals[0], f"lastAuthenticated of {name}")
         return None
 
     def _direct_groups(self, name, page=1000):
         out, start = [], 0
         while True:
-            d = (
-                self._req(
-                    "GET",
-                    "/user/group/direct",
-                    params={"username": name, "start-index": start, "max-results": page},
-                )
-                or {}
+            d = self._req(
+                "GET",
+                "/user/group/direct",
+                params={"username": name, "start-index": start, "max-results": page},
             )
-            items = d.get("groups", [])
+            items = _items(d, "groups", f"groups of {name}")
             out += [x["name"] for x in items]
             if len(items) < page:
                 return sorted(out)
@@ -111,19 +153,22 @@ class CrowdClient:
         res = []
         for u in self._search("user"):
             n = u["name"]
+            what = f"user {n}"
+            if not isinstance(u.get("active"), bool):  # no default: a missing flag must not read as active
+                raise CrowdError(f"unexpected Crowd response for {what}: 'active' is not true/false")
             created = u.get("created-date")
             res.append(
                 User(
                     n,
-                    u.get("display-name", ""),
-                    u.get("email", ""),
-                    u.get("active", True),
+                    _str(u, "display-name", what),
+                    _str(u, "email", what),
+                    u["active"],
                     self._last_login(n),
                     self._direct_groups(n),
-                    None if created is None else datetime.fromtimestamp(int(created) / 1000, tz=timezone.utc),
+                    None if created is None else _ms(created, f"created-date of {n}"),
                 )
             )
-        return res
+        return sorted(res, key=lambda u: u.name)  # stable order: the drift check compares plans
 
     def groups(self):
         return sorted(g["name"] for g in self._search("group"))
@@ -149,6 +194,17 @@ class CrowdClient:
         self._req("DELETE", "/user/group/direct", params={"username": user, "groupname": group})
 
     def deactivate(self, user):
+        # Send back only the identity fields Crowd requires plus active=False, not the whole
+        # fetched entity (attributes, password link, expand data). Crowd has no ETag/If-Match
+        # for users, so a profile edit landing between this GET and PUT can still be overwritten.
         u = self._req("GET", "/user", params={"username": user})
-        u["active"] = False
-        self._req("PUT", "/user", params={"username": user}, json=u)
+        if not isinstance(u, dict) or u.get("name") != user:
+            raise CrowdError(f"unexpected Crowd response for user {user!r}; not deactivated")
+        # Crowd's PUT /user overwrites the profile fields, so echo every one back unchanged;
+        # never default a missing one to "" (that would blank it in Crowd).
+        fields = ("name", "first-name", "last-name", "display-name", "email")
+        if not all(isinstance(u.get(k), str) for k in fields):
+            raise CrowdError(f"incomplete Crowd profile for user {user!r}; not deactivated")
+        body = {k: u[k] for k in fields}
+        body["active"] = False
+        self._req("PUT", "/user", params={"username": user}, json=body)

@@ -207,7 +207,6 @@ def test_item7_search_paginates(client, monkeypatch):
         (None, None),
         ({}, None),
         ({"attributes": [{"name": "other", "values": ["1"]}]}, None),
-        ({"attributes": [{"name": "lastAuthenticated", "values": []}]}, None),
         ({"attributes": [{"name": "lastAuthenticated", "values": ["1760486400000"]}]}, "2025-10-15"),
     ],
 )
@@ -232,7 +231,7 @@ def test_item7_users_and_groups(client, monkeypatch):
                     "active": False,
                     "created-date": 1760486400000,
                 },
-                {"name": "amy"},
+                {"name": "amy", "active": True},
             ]
             if e == "user"
             else [{"name": "z"}, {"name": "a"}]
@@ -240,7 +239,7 @@ def test_item7_users_and_groups(client, monkeypatch):
     )
     monkeypatch.setattr(c, "_last_login", lambda n: None)
     monkeypatch.setattr(c, "_direct_groups", lambda n: ["g"])
-    bob, amy = c.users()
+    amy, bob = c.users()  # sorted by name
     assert (bob.active, bob.created.year, amy.active, amy.created) == (False, 2025, True, None)
     assert c.groups() == ["a", "z"]
 
@@ -251,7 +250,19 @@ def test_item7_writes_send_expected_requests(client):
     c.add_user("trin")
     c.add_to_group("neo", "hr")
     c.remove_from_group("neo", "hr")
-    script.append(Resp(200, {"name": "neo", "active": True}))
+    script.append(
+        Resp(
+            200,
+            {
+                "name": "neo",
+                "first-name": "Neo",
+                "last-name": "A",
+                "display-name": "Neo A",
+                "email": "n@x",
+                "active": True,
+            },
+        )
+    )
     c.deactivate("neo")
     body = calls[0][2]["json"]
     assert (body["first-name"], body["last-name"], body["password"]) == (

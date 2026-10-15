@@ -3,6 +3,50 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.3] - 2026-10-15
+
+### Changed
+- Visible behaviour changes:
+  - Leavers: `jml` plans `deactivate-user` before the `remove-from-group` steps. If deactivation
+    fails, the run stops with exit 1 and no group is removed.
+  - Exit codes: a redirect, any non-2xx or non-JSON answer, a malformed Crowd response, and the
+    directory changing between the confirmed preview and the apply all exit 1 (nothing is applied
+    on drift). An unknown JML column now exits 2.
+  - Stricter Crowd validation: a user without a true/false `active` flag, a non-string name field
+    or an out-of-range timestamp is now an error (exit 1) instead of being read with a default.
+
+### Fixed
+- Crowd millisecond timestamps convert exactly (integer arithmetic), so the year-9999 limit and
+  sub-millisecond values no longer drift from float rounding.
+- `jml` leavers are now deactivated before their group memberships are removed, so a failed removal
+  can no longer leave the account active (the plan order changed: `deactivate-user` comes first).
+- The Crowd client no longer follows redirects and treats every non-2xx answer (including a 3xx to a
+  login page) as an error, so such a change is logged as failed instead of applied.
+- `--apply` re-reads the directory and re-plans right before applying; if the plan differs from the
+  confirmed preview, it exits 1 and changes nothing. `fix` now recomputes the audit for that check.
+- Deactivation sends only the identity fields and `active: false`, not the whole fetched user, and
+  refuses to write if Crowd's answer isn't the requested user or lacks any profile field (Crowd's
+  `PUT /user` overwrites them, so a missing one is never sent as blank).
+- If the re-plan before apply fails because the directory changed (for example a planned user was
+  deleted), it is reported as drift: exit 1 and nothing changed.
+- Crowd fields that drive decisions are validated: `active` must be true/false (a missing flag no
+  longer reads as active), `display-name` and `email` must be strings, and `lastAuthenticated` and
+  `created-date` must be whole-number millisecond timestamps in range (`lastAuthenticated` needs a
+  non-empty `values` list; oversized digit strings are rejected before parsing). A Crowd error during
+  the re-check is reported as a Crowd error, not as drift. A 2xx answer that isn't JSON
+  (such as an HTML login page) is an error naming the request. Each exits 1.
+- Users read from Crowd are sorted by name, so the re-check before apply doesn't abort just because
+  Crowd returned the same users in a different order.
+- Malformed Crowd responses (missing or non-list `users`/`groups`/`attributes`, entries without a
+  name) raise an error instead of reading as empty results (a falsely clean audit or zero removals).
+- `jml` CSV headers are matched after stripping spaces, so `groups ` is no longer silently ignored,
+  and unknown columns are rejected with exit 2.
+- `report` reads the directory once, so all sections describe the same state.
+
+### Documentation
+- README states that membership is direct-only (nested groups aren't read or changed) and documents
+  the re-check before apply.
+
 ## [0.2.2] - 2026-10-15
 
 ### Changed
