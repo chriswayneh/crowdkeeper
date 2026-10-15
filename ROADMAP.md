@@ -8,16 +8,16 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 | --- | --- |
 | **Latest release** | `v0.2.0` (2026-10-15): audit-log, JML safety and security fixes; see [CHANGELOG.md](CHANGELOG.md). It did not include the Phase 1 items below. |
 | **Next** | Phase 1: Harden (not started) |
-| **Next target** | `v0.3.0` (the phase version numbers below predate the v0.2.0 release) |
+| **Next target** | `v0.3.0` (Phase 1) |
 
 ## Phase map
 
 | Phase | Name | Version | Outcome | Status |
 | --- | --- | --- | --- | --- |
 | **0** | Foundation | `v0.1.0` | Six commands, demo mode, live Crowd client, safe apply, audit log, tests, CI | Done |
-| **1** | Harden | `v0.2.0` | Retries, faster live scans, clear exit codes, first release | Planned |
-| **2** | Report | `v0.3.0` | Severity, exit-on-findings for CI, baselines | Planned |
-| **3** | Policy | `v0.4.0` | Config file, exemptions, rollback from the audit log | Planned |
+| **1** | Harden | `v0.3.0` | Retries, faster live scans, clear exit codes | Planned |
+| **2** | Report | `v0.4.0` | Severity, exit-on-findings for CI, baselines | Planned |
+| **3** | Policy | `v0.5.0` | Config file, exemptions, rollback from the audit log | Planned |
 | **4** | Stable | `v1.0.0` | Stable CLI, flag names, JSON and audit log schema, exit codes | Planned |
 
 ## Phase 0: Foundation (v0.1.0)
@@ -39,7 +39,7 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 
 **Done when:** every command runs in demo mode as documented and CI is green. Landed in commits `dc93a4e` to `5f917b1`, with CI added in `c64fcd8` and after. Not tagged or released.
 
-## Phase 1: Harden (v0.2.0)
+## Phase 1: Harden (v0.3.0)
 
 **Goal:** Live mode you can point at a large production directory without surprises.
 
@@ -49,9 +49,9 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 - [ ] Tests against recorded Crowd API responses
 - [x] First tag, GitHub release and `CHANGELOG.md` (v0.2.0)
 
-**Done when:** an audit of a directory with thousands of users finishes cleanly under throttling and `v0.2.0` is tagged.
+**Done when:** an audit of a directory with thousands of users finishes cleanly under throttling and `v0.3.0` is tagged.
 
-## Phase 2: Report (v0.3.0)
+## Phase 2: Report (v0.4.0)
 
 **Goal:** Feed crowdkeeper results into scheduled jobs and other tools, not just terminals.
 
@@ -62,7 +62,7 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 
 **Done when:** a scheduled job can run `crowdkeeper audit` and fail only on new findings.
 
-## Phase 3: Policy (v0.4.0)
+## Phase 3: Policy (v0.5.0)
 
 **Goal:** Let admins encode their own rules without forking it.
 
