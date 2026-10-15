@@ -15,9 +15,15 @@ All notable changes to this project are documented here. This project follows
   rejection or a failed `intent` write), `error` and `applied_before_failure`.
   **Readers of the old one-line-per-change log must be updated.**
 - `auditlog.record` rejects reserved top-level field names (`ts`; `event`, `action` and `detail` are positional parameters and cannot be passed as extra fields).
-
-- **Breaking:** `CROWD_URL` must be `https://` (plain http only for localhost) and must not contain
-  credentials; the client refuses to start otherwise (was a warning).
+- **Breaking:** `CROWD_URL` must be `https://` and must not contain credentials; the client refuses
+  to start otherwise (was a warning). Plain `http://`, localhost included, needs the new global
+  `--insecure` flag, which logs a warning.
+- **Breaking:** `jml` movers: a blank `groups` cell (empty, spaces, or only `;`) now leaves
+  memberships alone. Removing every group requires the explicit marker `-` or `none`; mixing it
+  with group names is rejected with the line number.
+- Requires `requests>=2.32.4` (fixes CVE-2024-35195 and CVE-2024-47081).
+- Error text masks an app password of 8+ characters anywhere, and a shorter one only as a whole
+  token, so short passwords no longer mangle unrelated words.
 - **Breaking:** users with no recorded login are now `activity-unknown` (review) instead of
   `inactive` (deactivate), and are only flagged once the account is older than `--days`.
 - `--days` must be a positive whole number (`audit`, `fix`, `report`, and the core API).
@@ -29,8 +35,13 @@ All notable changes to this project are documented here. This project follows
 - `fix --apply` could deactivate brand-new accounts that had not logged in yet.
 - `jml`: several rows for one user are applied in order against the updated state (mover and back,
   repeated joiner no longer creates twice).
-- `jml`: a missing `groups` column or truncated row no longer removes every mover membership; only
-  an explicitly empty `groups` value does.
+- `jml`: a missing `groups` column, truncated row or blank `groups` cell no longer removes every
+  mover membership; only an explicit `-` or `none` does.
+- A Ctrl-C while writing a change's `applied` line now logs a `failed` entry with
+  `stage: applied_log` and `change_applied: true` before the interrupt propagates.
+
+### Added
+- `SECURITY.md` (supported versions, private reporting, scope) and a `[tool.ruff]` config.
 - `--apply` executes exactly the confirmed plan instead of re-planning after the prompt.
 - Membership reads now paginate past Crowd's 1,000-result page.
 - CLI error messages mask the app password and URL credentials.

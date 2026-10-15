@@ -168,9 +168,9 @@ def test_report_escapes_markdown():
     assert core.md_safe("a|b`c") == "a\\|b'c"
 
 
-def test_http_url_warns_for_localhost_only(caplog):
+def test_http_url_needs_insecure_and_warns(caplog):
     from crowdkeeper.client import CrowdClient
-    CrowdClient("http://localhost:8095/crowd", "app", "pw")
+    CrowdClient("http://localhost:8095/crowd", "app", "pw", insecure=True)
     assert "plain http" in caplog.text and "pw" not in caplog.text
 
 
@@ -479,9 +479,9 @@ def test_version_is_0_2_0():
 
 # ---- Codex review findings ----------------------------------------------------------------
 
-from datetime import timedelta  # noqa: E402
+from datetime import timedelta
 
-from crowdkeeper.models import User  # noqa: E402
+from crowdkeeper.models import User
 
 
 class OneUser(FakeWritable):
@@ -510,7 +510,7 @@ def test_f1_missing_last_login_is_review_not_deactivate(tmp_path, created):
 
 class JmlWritable(FakeWritable):
     def add_user(self, *a):
-        self.calls.append(("create",) + a[:1])
+        self.calls.append(("create", *a[:1]))
 
     def add_to_group(self, u, g):
         self.calls.append(("add", u, g))
@@ -543,12 +543,14 @@ def test_f3_missing_groups_column_leaves_memberships(d, tmp_path):
     assert main(["--demo", "jml", str(p), "-o", "json"]) == 0
 
 
-def test_f3_truncated_row_leaves_memberships_explicit_empty_removes(d):
+def test_f3_truncated_or_blank_leaves_memberships_explicit_dash_removes(d):
     cols = ["action", "username", "groups"]
     # csv.DictReader gives None for a truncated row's missing value
     assert core.jml(d, [{"action": "mover", "username": "bob", "groups": None}],
                     core.Executor(d), cols) == []
-    plan = core.jml(d, [{"action": "mover", "username": "bob", "groups": ""}],
+    assert core.jml(d, [{"action": "mover", "username": "bob", "groups": ""}],
+                    core.Executor(d), cols) == []
+    plan = core.jml(d, [{"action": "mover", "username": "bob", "groups": "-"}],
                     core.Executor(d), cols)
     assert {p["action"] for p in plan} == {"remove-from-group"} and len(plan) == 2
 
@@ -565,6 +567,7 @@ def test_f3_missing_required_header(d, tmp_path):
                                  "crowd.example.com", "http://127.0.0.2"])
 def test_f4_plain_http_rejected_before_any_request(url, monkeypatch):
     import requests
+
     from crowdkeeper.client import CrowdClient, CrowdError
     monkeypatch.setattr(requests.Session, "request",
                         lambda *a, **k: pytest.fail("request was sent"))
@@ -572,9 +575,9 @@ def test_f4_plain_http_rejected_before_any_request(url, monkeypatch):
         CrowdClient(url, "app", "pw")
 
 
-@pytest.mark.parametrize("url", ["https://crowd.example.com", "http://localhost:8095",
-                                 "http://127.0.0.1", "http://[::1]:8095"])
-def test_f4_https_and_localhost_allowed(url):
+@pytest.mark.parametrize("url", ["https://crowd.example.com", "https://localhost:8095",
+                                 "https://127.0.0.1", "https://[::1]:8095"])
+def test_f4_https_allowed(url):
     from crowdkeeper.client import CrowdClient
     CrowdClient(url, "app", "pw")
 

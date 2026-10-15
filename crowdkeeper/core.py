@@ -1,8 +1,8 @@
-import sys
-import uuid
 import csv
 import io
 import json
+import sys
+import uuid
 from datetime import datetime, timezone
 
 from . import auditlog
@@ -75,7 +75,7 @@ def fmt(rows, cols, out="table"):
     if not rows:
         return "(nothing found)"
     widths = [max(len(c), *(len(str(r.get(c, ""))) for r in rows)) for c in cols]
-    line = lambda vals: "  ".join(str(v).ljust(w) for v, w in zip(vals, widths)).rstrip()
+    line = lambda vals: "  ".join(str(v).ljust(w) for v, w in zip(vals, widths, strict=False)).rstrip()
     return "\n".join([line(cols), line("-" * w for w in widths)] +
                      [line(r.get(c, "") for c in cols) for r in rows])
 
@@ -198,20 +198,37 @@ class Executor:
         self.applied += 1
         try:
             auditlog.record(self.log_path, "applied", action, details, seq=seq, run_id=self.run_id)
-        except Exception as e:  # change happened and its intent entry is logged
+        except BaseException as e:  # incl. Ctrl-C: the change happened; log it, then re-raise
             self._fail(action, details, e, seq, "applied_log")
 
 
 JML_REQUIRED = ("action", "username")
 
 
+NO_GROUPS = {"-", "none"}
+
+
 def _groups_of(r):
-    """None = groups column missing/blank-by-truncation (don't touch groups);
-    [] = column present but explicitly empty (for movers: remove every membership)."""
+    """None = don't touch groups: column missing, row truncated, or a blank cell (empty,
+    spaces, or only ';'). [] = the explicit marker '-' or 'none': remove every membership.
+    Otherwise the listed groups. A blank cell is never read as "remove all"."""
     v = r.get("groups")
     if v is None:
         return None
-    return [g for g in v.replace(";", " ").split() if g]
+    items = [g for g in v.replace(";", " ").split() if g]
+    if not items:
+        return None
+    if any(g.lower() in NO_GROUPS for g in items):
+        return []
+    return items
+
+
+def _groups_error(r):
+    v = r.get("groups") or ""
+    items = [g for g in v.replace(";", " ").split() if g]
+    if len(items) > 1 and any(g.lower() in NO_GROUPS for g in items):
+        return f"'-'/'none' (remove all groups) cannot be combined with groups: {v.strip()!r}"
+    return None
 
 
 def validate_jml(rows, fieldnames, known_groups):
@@ -223,6 +240,8 @@ def validate_jml(rows, fieldnames, known_groups):
     for i, r in enumerate(rows, start=2):
         if None in r:
             errors.append(f"line {i}: more values than header columns")
+        if _groups_error(r):
+            errors.append(f"line {i}: {_groups_error(r)}")
         for g in _groups_of(r) or []:
             if g not in known:
                 errors.append(f"line {i}: unknown group {g!r}")
@@ -252,11 +271,11 @@ def jml(directory, rows, ex, fieldnames=None):
             for g in groups or []:
                 if g not in cur.groups:
                     ex.do("add-to-group", ex.d.add_to_group, name, g, user=name, group=g)
-                    cur.groups = sorted(cur.groups + [g])
+                    cur.groups = sorted([*cur.groups, g])
         elif kind == "mover":
             if not cur:
                 raise ValueError(f"CSV line {i}: mover {name}: no such user")
-            if groups is None:  # no groups value: leave memberships alone
+            if groups is None:  # missing/blank groups: leave memberships alone
                 continue
             for g in sorted(set(cur.groups) - set(groups)):
                 ex.do("remove-from-group", ex.d.remove_from_group, name, g, user=name, group=g)
@@ -295,7 +314,7 @@ def report(directory, days=90, now=None):
     users, groups = directory.users(), directory.groups()
     f = audit(directory, days, now)
     count = lambda t: sum(1 for x in f if x["type"] == t)
-    lines = [f"# Crowd Access Review", "", f"Generated: {now:%Y-%m-%d %H:%M} UTC  ",
+    lines = ["# Crowd Access Review", "", f"Generated: {now:%Y-%m-%d %H:%M} UTC  ",
              f"Inactivity threshold: {days} days", "", "## Summary", "",
              "| Metric | Count |", "|---|---|",
              f"| Users | {len(users)} |", f"| Active users | {sum(u.active for u in users)} |",

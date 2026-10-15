@@ -13,11 +13,17 @@ crowdkeeper --demo audit # try it with the built-in fake directory, no server ne
 Against a real Crowd server:
 
 ```bash
-export CROWD_URL=https://crowd.example.com/crowd   # https required (plain http only for localhost); no user:pass@ in the URL
+export CROWD_URL=https://crowd.example.com/crowd   # https required; no user:pass@ in the URL
 export CROWD_APP=crowdkeeper
 export CROWD_APP_PASSWORD=...   # never logged or written to the audit log
 crowdkeeper audit --days 90
 ```
+
+`CROWD_URL` must be `https://`. Plain `http://` is refused for every host, localhost included,
+unless you pass the global `--insecure` flag (e.g. `crowdkeeper --insecure audit` against a local
+test server); that sends the application password unencrypted and prints a warning. URLs with
+embedded credentials are always refused. See [SECURITY.md](SECURITY.md) for supported versions and
+how to report a vulnerability privately.
 
 ## Commands
 
@@ -52,7 +58,7 @@ replaces the single-line-per-change format of earlier versions; update any log r
 {"ts": "2026-10-15T02:10:01+00:00", "event": "intent", "action": "deactivate-user", "seq": 1, "run_id": "9f2c...", "detail": {"user": "frank", "reason": "last login 140d ago"}}
 {"ts": "2026-10-15T02:10:01+00:00", "event": "applied", "action": "deactivate-user", "seq": 1, "run_id": "9f2c...", "detail": {"user": "frank", "reason": "last login 140d ago"}}
 {"ts": "2026-10-15T02:10:02+00:00", "event": "intent", "action": "remove-from-group", "seq": 2, "run_id": "9f2c...", "detail": {"user": "ivan", "group": "jira-users"}}
-{"ts": "2026-10-15T02:10:02+00:00", "event": "failed", "action": "remove-from-group", "seq": 2, "run_id": "9f2c...", "stage": "change", "change_applied": false, "error": "RuntimeError: ...", "applied_before_failure": 1, "detail": {"user": "ivan", "group": "jira-users"}}
+{"ts": "2026-10-15T02:10:02+00:00", "event": "failed", "action": "remove-from-group", "seq": 2, "run_id": "9f2c...", "stage": "change", "change_applied": null, "error": "ReadTimeout: ...", "applied_before_failure": 1, "detail": {"user": "ivan", "group": "jira-users"}}
 ```
 
 **Partial failures:** if a change fails partway through `jml --apply` or `fix --apply` (including
@@ -77,13 +83,16 @@ planted problems. Demo mode never writes anything to a directory; `--apply` fall
 JML CSV format (`groups` separated by `;` or spaces; for movers it's the full target set). The
 `action` and `username` columns are required. The whole file is checked before anything is planned:
 unknown groups or malformed rows are reported with line numbers and nothing is changed. Rows run in
-order, so several rows for one user build on each other. For a mover, a missing `groups` column or
-value leaves memberships alone; only an explicitly empty `groups` field removes them all:
+order, so several rows for one user build on each other. For a mover, a missing `groups` column,
+a truncated row, or a blank cell (empty, only spaces, or only `;`) leaves memberships alone; it is
+never read as "remove all". To remove every group, write the explicit marker `-` or `none`
+(case-insensitive). Combining `-`/`none` with group names is a validation error with the line number:
 
 ```csv
 action,username,display_name,email,groups
 joiner,newhire,New Hire,newhire@example.com,jira-users;confluence-users
 mover,bob,,,jira-users;confluence-users
+mover,carol,,,-
 leaver,frank,,,
 ```
 

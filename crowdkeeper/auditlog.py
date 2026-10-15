@@ -26,11 +26,21 @@ def safe_error(exc):
     return scrub(f"{type(exc).__name__}: {exc}")
 
 
+MIN_SUBSTRING_MASK = 8
+
+
 def scrub(msg):
-    """Mask the app password and URL-embedded credentials in any text shown or logged."""
+    """Mask the app password and URL-embedded credentials in any text shown or logged.
+
+    A password of 8+ characters is masked wherever it appears (substring). A shorter one is
+    masked only where it stands alone as a token, so e.g. a password "us" does not turn
+    "/rest/usermanagement" into "/rest/***ermanagement" while "password us rejected" still
+    becomes "password *** rejected". URL credentials are always masked."""
     msg = str(msg)
     pw = os.environ.get("CROWD_APP_PASSWORD")
-    if pw:
+    if pw and len(pw) >= MIN_SUBSTRING_MASK:
         msg = msg.replace(pw, "***")
+    elif pw:
+        msg = re.sub(r"(?<![\w.\-])" + re.escape(pw) + r"(?![\w.\-])", "***", msg)
     msg = re.sub(r"(https?://)[^/@\s]+@", r"\1***@", msg)  # credentials embedded in URLs
     return msg[:500]

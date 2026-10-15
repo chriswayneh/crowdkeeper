@@ -9,13 +9,24 @@ description = "Access hygiene and joiner/mover/leaver CLI for Atlassian Crowd ad
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
-dependencies = ["requests>=2.25"]
+dependencies = ["requests>=2.32.4"]
 
 [project.optional-dependencies]
-test = ["pytest>=7"]
+test = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6"]
 
 [project.scripts]
 crowdkeeper = "crowdkeeper.cli:main"
 
 [tool.setuptools]
 packages = ["crowdkeeper"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "RUF"]
+ignore = ["E731", "E741"]  # short lambdas/names in tests and the report builder are intentional
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]  # test helpers are imported mid-file next to the tests that use them

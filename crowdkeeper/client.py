@@ -2,9 +2,9 @@
 import logging
 import os
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 import requests
-from urllib.parse import urlsplit
 
 from .models import User
 
@@ -18,11 +18,9 @@ class CrowdError(RuntimeError):
         self.status = status  # HTTP status, when Crowd answered
 
 
-LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
-
-
-def check_url(url):
-    """Require https (plain http only for localhost) and no credentials in the URL."""
+def check_url(url, insecure=False):
+    """Require https and no credentials in the URL. Plain http (any host, localhost
+    included) only with insecure=True (the --insecure flag)."""
     try:
         u = urlsplit(url)
         host = u.hostname
@@ -33,20 +31,21 @@ def check_url(url):
                          "CROWD_APP_PASSWORD")
     if u.scheme == "https" and host:
         return
-    if u.scheme == "http" and host in LOCAL_HOSTS:
-        log.warning("CROWD_URL is plain http to localhost; use https anywhere else")
+    if u.scheme == "http" and host and insecure:
+        log.warning("--insecure: CROWD_URL is plain http; the application password is sent "
+                    "unencrypted")
         return
-    raise CrowdError("CROWD_URL must be https:// (plain http is allowed only for localhost), "
-                     "so the application password is never sent unencrypted")
+    raise CrowdError("CROWD_URL must be https:// so the application password is never sent "
+                     "unencrypted (pass --insecure to allow plain http, e.g. a local test server)")
 
 
 class CrowdClient:
     writable = True
 
-    def __init__(self, url, app, password, timeout=30):
+    def __init__(self, url, app, password, timeout=30, insecure=False):
         if not (url and app and password):
             raise CrowdError("Set CROWD_URL, CROWD_APP and CROWD_APP_PASSWORD (or use --demo).")
-        check_url(url)
+        check_url(url, insecure)
         self.url = url.rstrip("/") + BASE
         self.s = requests.Session()
         self.s.auth = (app, password)  # never logged
@@ -54,9 +53,9 @@ class CrowdClient:
         self.timeout = timeout
 
     @classmethod
-    def from_env(cls):
+    def from_env(cls, insecure=False):
         return cls(os.environ.get("CROWD_URL"), os.environ.get("CROWD_APP"),
-                   os.environ.get("CROWD_APP_PASSWORD"))
+                   os.environ.get("CROWD_APP_PASSWORD"), insecure=insecure)
 
     def _req(self, method, path, **kw):
         log.debug("%s %s params=%s", method, path, kw.get("params"))

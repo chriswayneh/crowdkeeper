@@ -5,9 +5,9 @@ import logging
 import os
 import sys
 
-from . import __version__, auditlog, core
 import requests
 
+from . import __version__, auditlog, core
 from .client import CrowdClient, CrowdError
 from .demo import NOW, DemoDirectory
 
@@ -17,7 +17,7 @@ FCOLS = ["type", "subject", "detail", "fix"]
 def _dir(args):
     if args.demo or os.environ.get("CROWDKEEPER_DEMO") == "1":
         return DemoDirectory(), NOW
-    return CrowdClient.from_env(), None
+    return CrowdClient.from_env(insecure=getattr(args, "insecure", False)), None
 
 
 def _confirm(args, n):
@@ -78,6 +78,8 @@ def main(argv=None):
                                 "Access hygiene and JML toolkit for Atlassian Crowd")
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("--demo", action="store_true", help="use the built-in fake directory")
+    p.add_argument("--insecure", action="store_true",
+                   help="allow a plain http:// CROWD_URL (sends the app password unencrypted)")
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)
 
