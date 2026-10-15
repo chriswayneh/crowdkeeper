@@ -232,7 +232,7 @@ def test_item7_users_and_groups(client, monkeypatch):
                     "active": False,
                     "created-date": 1760486400000,
                 },
-                {"name": "amy"},
+                {"name": "amy", "active": True},
             ]
             if e == "user"
             else [{"name": "z"}, {"name": "a"}]
