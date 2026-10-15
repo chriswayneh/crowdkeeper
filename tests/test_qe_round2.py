@@ -207,7 +207,6 @@ def test_item7_search_paginates(client, monkeypatch):
         (None, None),
         ({}, None),
         ({"attributes": [{"name": "other", "values": ["1"]}]}, None),
-        ({"attributes": [{"name": "lastAuthenticated", "values": []}]}, None),
         ({"attributes": [{"name": "lastAuthenticated", "values": ["1760486400000"]}]}, "2025-10-15"),
     ],
 )

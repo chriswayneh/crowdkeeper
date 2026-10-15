@@ -5,7 +5,7 @@ import json
 import pytest
 
 from crowdkeeper import cli, core
-from crowdkeeper.client import CrowdClient, CrowdError
+from crowdkeeper.client import _MAX_MS, CrowdClient, CrowdError, _ms
 
 from .test_commands import JmlWritable
 
@@ -194,3 +194,78 @@ def test_deactivate_rejects_complete_profile_of_wrong_user(monkeypatch):
     with pytest.raises(CrowdError):
         c.deactivate("bob")
     assert puts == []
+
+
+# QE round 2 on PR #6
+
+
+@pytest.mark.parametrize("values", [{"0": "1600000000000"}, 1600000000000, "1600000000000", [], None, ["x"]])
+def test_last_authenticated_values_must_be_nonempty_list(monkeypatch, values):
+    c = _users_client(monkeypatch, dict(_OK), [{"name": "lastAuthenticated", "values": values}])
+    with pytest.raises(CrowdError, match="unexpected Crowd response"):
+        c.users()
+
+
+def test_ms_digit_string_capped():
+    with pytest.raises(CrowdError, match="unexpected Crowd response"):
+        _ms("9" * 5000, "t")
+    with pytest.raises(CrowdError, match="unexpected Crowd response"):
+        _ms("1" * 16, "t")
+
+
+def test_recheck_crowd_error_not_reported_as_drift(monkeypatch, capsys, tmp_path):
+    from crowdkeeper.cli import main
+
+    calls = []
+    good = [{"name": "lastAuthenticated", "values": ["1600000000000"]}]
+    bad = [{"name": "lastAuthenticated", "values": ["9" * 5000]}]
+    c = _users_client(monkeypatch, dict(_OK, active=False), good)
+    c._direct_groups = lambda n: ["jira-users"]  # disabled user still in a group: fix plans a removal
+    monkeypatch.setattr(
+        c, "_req", lambda *a, **k: (calls.append(1), {"attributes": good if len(calls) < 2 else bad})[1]
+    )
+    monkeypatch.setattr(cli, "_dir", lambda a: (c, None))
+    writes = []
+    monkeypatch.setattr(c, "remove_from_group", lambda *a: writes.append(a))
+    assert main(["fix", "--apply", "-y", "--log", str(tmp_path / "a")]) == 1
+    err = capsys.readouterr().err
+    assert "unexpected Crowd response" in err and "changed since the preview" not in err
+    assert writes == []
+
+
+def test_run_plan_reraises_crowd_error_even_if_value_error(monkeypatch, tmp_path):
+    class Both(CrowdError, ValueError):
+        pass
+
+    d = JmlWritable()
+    calls = []
+
+    def planner(ex):
+        calls.append(1)
+        if len(calls) > 1:
+            raise Both("boom")
+        return core.jml(d, [{"action": "mover", "username": "bob", "groups": "jira-users"}], ex)
+
+    monkeypatch.setattr(cli, "_confirm", lambda a, n: True)
+    args = type("A", (), {"apply": True, "output": "table", "log": str(tmp_path / "a"), "yes": True})()
+    with pytest.raises(CrowdError):
+        cli._run_plan(args, d, planner)
+    assert d.calls == []
+
+
+def test_ms_bounds_and_non_ascii_digits():
+    with pytest.raises(CrowdError):
+        _ms("١٢٣", "t")
+    assert _ms(_MAX_MS, "t").year == 9999
+    assert _ms(str(_MAX_MS), "t").year == 9999
+    assert _ms(0, "t").year == 1970
+    with pytest.raises(CrowdError):
+        _ms(_MAX_MS + 1, "t")
+    with pytest.raises(CrowdError):
+        _ms(-1, "t")
+
+
+def test_last_authenticated_uses_first_value(monkeypatch):
+    attrs = [{"name": "lastAuthenticated", "values": ["1600000000000", "1700000000000"]}]
+    (u,) = _users_client(monkeypatch, dict(_OK), attrs).users()
+    assert u.last_login.year == 2020
