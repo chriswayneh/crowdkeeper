@@ -1,9 +1,11 @@
 import argparse
 import csv
+import io
 import json
 import logging
 import os
 import sys
+import unicodedata
 
 import requests
 
@@ -24,42 +26,73 @@ class _CsvError(Exception):
     """Malformed JML CSV (bad header or broken quoting); nothing is planned or changed."""
 
 
+_BAD_CATS = ("Cc", "Cf", "Zl", "Zp")  # control, format (bidi, zero-width), line/para separators
+
+
+def _bad_char(text):
+    """First control/format/separator character in text (tab included), or None."""
+    return next((c for c in text if unicodedata.category(c) in _BAD_CATS), None)
+
+
 def _read_jml_csv(path):
-    """Read a JML CSV strictly: unique, non-blank headers and well-formed quoting."""
-    with open(path, newline="") as f:
-        reader = csv.reader(f, strict=True)
+    """Read a JML CSV strictly. Raise _CsvError (exit 2, nothing planned) for: non-UTF-8 bytes, an
+    empty file, a duplicate, blank or missing required header, broken quoting, a row with more or
+    fewer values than the header, or a control/format character in any field."""
+    with open(path, "rb") as f:
+        data = f.read()
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError as e:
+        line = data[: e.start].count(b"\n") + 1
+        raise _CsvError(f"{path}: line {line}: not valid UTF-8 (byte {e.start})") from None
+    reader = csv.reader(io.StringIO(text, newline=""), strict=True)
+
+    def nxt():
+        start = reader.line_num + 1
         try:
-            header = next(reader, None)
-            if header is None:
-                return [], None
-            seen, cols = set(), []
-            for h in header:
-                name = h.strip()
-                if not name:
-                    raise _CsvError(f"{path}: line 1: blank column header")
-                if name in seen:
-                    raise _CsvError(f"{path}: line 1: duplicate column header {name!r}")
-                seen.add(name)
-                cols.append(h)
-            rows = []
-            while True:
-                start = reader.line_num + 1
-                try:
-                    vals = next(reader)
-                except StopIteration:
-                    break
-                except csv.Error as e:
-                    raise _CsvError(f"{path}: line {start}: malformed CSV ({e})") from None
-                if not vals:
-                    continue
-                row = dict(zip(cols, vals, strict=False))
-                for c in cols[len(vals) :]:
-                    row[c] = None
-                if len(vals) > len(cols):
-                    row[None] = vals[len(cols) :]
-                rows.append(row)
+            vals = next(reader)
+        except StopIteration:
+            return None, start
         except csv.Error as e:
-            raise _CsvError(f"{path}: line 1: malformed CSV header ({e})") from None
+            raise _CsvError(f"{path}: line {start}: malformed CSV ({e})") from None
+        for v in vals:
+            c = _bad_char(v)
+            if c is not None:
+                raise _CsvError(
+                    f"{path}: line {start}: control or invisible character U+{ord(c):04X} in a field"
+                )
+        return vals, start
+
+    header, start = nxt()
+    while header == []:
+        header, start = nxt()
+    if header is None:
+        raise _CsvError(f"{path}: empty file (no header)")
+    seen, cols = set(), []
+    for h in header:
+        name = h.strip()
+        if not name:
+            raise _CsvError(f"{path}: line {start}: blank column header")
+        if name in seen:
+            raise _CsvError(f"{path}: line {start}: duplicate column header {name!r}")
+        seen.add(name)
+        cols.append(h)
+    missing = [c for c in core.JML_REQUIRED if c not in cols]
+    if missing:
+        raise _CsvError(f"{path}: line {start}: header is missing required column(s): {', '.join(missing)}")
+    rows = []
+    while True:
+        vals, start = nxt()
+        if vals is None:
+            break
+        if not vals:
+            continue
+        if len(vals) != len(cols):
+            what = "more" if len(vals) > len(cols) else "fewer"
+            raise _CsvError(
+                f"{path}: line {start}: {what} values ({len(vals)}) than header columns ({len(cols)})"
+            )
+        rows.append(dict(zip(cols, vals, strict=True)))
     return rows, cols
 
 

@@ -44,7 +44,7 @@ see a failure. Declining at an interactive prompt still exits 0. Every applied c
 |---|---|
 | 0 | Success, a dry run, nothing to do, or declined at the interactive prompt |
 | 1 | Invalid input, a Crowd, network or file error, or a partial apply (including Ctrl-C during `--apply`) |
-| 2 | A usage error (bad arguments, from argparse), a malformed JML CSV (duplicate or blank header, broken quoting), or `--apply` on non-TTY stdin without `-y` |
+| 2 | A usage error (bad arguments, from argparse), a malformed JML CSV (empty file with no header, a duplicate, blank or missing required header, broken quoting, a row with more or fewer values than the header, text that isn't UTF-8, or a control or invisible character such as NUL, tab, ESC, U+202E or U+200B in any field), or `--apply` on non-TTY stdin without `-y` |
 
 **Audit log format:** each change writes two lines. An `intent` line is written *before* the change
 is sent to Crowd, and an `applied` line after it succeeds, so even a Ctrl-C or kill mid-change leaves
@@ -84,14 +84,16 @@ no recorded login is reported as `activity-unknown` (review) once the account is
 re-plan after the prompt. Prompts and status messages go to stderr, so stdout is just the table/JSON/CSV.
 
 JML CSV format (`groups` separated by `;` or spaces; for movers it's the full target set). The
-`action` and `username` columns are required. The CSV is parsed strictly: a duplicate or blank column header (for
-example two `groups` columns) or broken quoting (an unclosed `"`, or text after a closing quote)
-stops the run with the line number and exit code 2 before anything is planned or changed. The whole file is checked before anything is planned or changed, including through the Python
+`action` and `username` columns are required. The file must be UTF-8 (a leading BOM is fine). The CSV is parsed strictly: an empty file, a duplicate, blank or missing required column header (for
+example two `groups` columns), broken quoting (an unclosed `"`, or text after a closing quote),
+a row with more or fewer values than the header (write empty cells as `,,`), bytes that aren't
+UTF-8, or a control or invisible character (NUL, tab, ESC, a line break inside quotes, bidi or
+zero-width characters) in any field stops the run with the line number and exit code 2 before anything is planned or changed. The whole file is checked before anything is planned or changed, including through the Python
 API with `Executor(apply=True)`: an unknown action, an empty username, a mover or leaver who
 doesn't exist (counting users created by earlier joiner rows), unknown groups or malformed rows are
 all reported with line numbers and nothing is changed. Rows run in
-order, so several rows for one user build on each other. For a mover, a missing `groups` column,
-a truncated row, or a blank cell (empty, only spaces, or only `;`) leaves memberships alone; it is
+order, so several rows for one user build on each other. For a mover, a missing `groups` column
+or a blank cell (empty, only spaces, or only `;`) leaves memberships alone; it is
 never read as "remove all". To remove every group, write the explicit marker `-` or `none`
 (case-insensitive, unquoted). To name a real group literally called `none` or `-`, wrap it in
 single quotes inside the cell, e.g. `jira-users;'none';'-'`; any single-quoted token is taken as a
@@ -276,7 +278,7 @@ flowchart LR
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md). The latest release is v0.2.0; Phase 0 is done and Phase 1 (harden live mode) is next.
+See [ROADMAP.md](ROADMAP.md). See [CHANGELOG.md](CHANGELOG.md) and the GitHub releases for the current version (0.2.2 is unreleased). Phase 0 is done and Phase 1 (harden live mode) is next.
 
 ## Development
 

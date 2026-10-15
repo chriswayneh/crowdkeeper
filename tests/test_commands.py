@@ -157,7 +157,7 @@ def test_jml_rejects_malformed_rows(d, tmp_path):
         core.jml(d, [{"action": "joiner", "username": ""}], core.Executor(d))
     p = tmp_path / "bad.csv"
     p.write_text("foo,bar\n1,2\n")
-    assert main(["--demo", "jml", str(p)]) == 1
+    assert main(["--demo", "jml", str(p)]) == 2  # missing required header: usage error since 0.2.2
 
 
 def test_confirm_eof_aborts(monkeypatch):
@@ -587,7 +587,7 @@ def test_f3_missing_required_header(d, tmp_path):
         core.jml(d, [{"username": "bob"}], core.Executor(d), ["username"])
     p = tmp_path / "j.csv"
     p.write_text("action,user\nmover,bob\n")
-    assert main(["--demo", "jml", str(p)]) == 1
+    assert main(["--demo", "jml", str(p)]) == 2  # missing required header: usage error since 0.2.2
 
 
 @pytest.mark.parametrize(

@@ -15,6 +15,16 @@ All notable changes to this project are documented here. This project follows
   so a name can't render as a link, image, emphasis or HTML. Finding subjects shown in code
   spans are left unescaped apart from backticks and newlines, since Markdown and HTML aren't
   interpreted there.
+- `jml` reads the CSV as UTF-8 with an optional BOM. These also stop the run with a line-numbered
+  error and exit 2, before anything is planned: an empty file (no header), a missing required
+  header (`action`, `username`; was exit 1), a row with more or fewer values than the header
+  (short rows were previously accepted), bytes that aren't UTF-8, and any control, format or
+  separator character in a field (NUL, tab, ESC, C1, U+202E, U+200B, U+2028, line breaks inside
+  quotes).
+- The Markdown `report` also escapes `_` and `~` and breaks autolinks (`://`, `www.`, `@`), and in
+  both escaped text and code spans it shows control, bidi, zero-width and line/paragraph separator
+  characters as visible `U+XXXX` text, so report output can't inject terminal escapes (ESC, OSC 8)
+  or reorder text.
 
 ## [0.2.1] - 2026-10-15
 

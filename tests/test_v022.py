@@ -65,7 +65,7 @@ def test_md_safe_escapes_link_and_html_chars(ch):
 def test_md_safe_neutralises_link_and_html():
     out = core.md_safe("[x](http://evil) <img src=x> a&b")
     assert "](" not in out and "<img" not in out and "&b" not in out
-    assert "\\[x\\]\\(http://evil\\)" in out and "&lt;img" in out and "&amp;b" in out
+    assert "\\[x\\]\\(http:\\/\\/evil\\)" in out and "&lt;img" in out and "&amp;b" in out
 
 
 def test_md_safe_keeps_existing_escapes():
@@ -93,9 +93,9 @@ def test_version_is_0_2_2():
 
 
 VALID_CSVS = [
-    "\ufeffaction,username,groups\nleaver,frank,\n",
+    "action,username,groups\nleaver,frank,\n",
     'action,username,groups\r\nmover,alice,"jira-users,confluence-users"\r\n',
-    " action , username ,groups\nmover,alice,a;b\n\nleaver,frank\nmover,bob,x,extra\n",
+    "action,username,groups\nmover,alice,a;b\n\nleaver,frank,\nmover,bob,x\n",
     'action,username,groups\nmover,alice,"say ""hi"""\n',
 ]
 

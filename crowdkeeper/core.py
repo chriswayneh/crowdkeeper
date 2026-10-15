@@ -1,7 +1,9 @@
 import csv
 import io
 import json
+import re
 import sys
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 
@@ -82,18 +84,37 @@ def csv_safe(v):
     return "'" + v if v.startswith(_FORMULA) else v
 
 
+def _visible(v):
+    """Turn newlines/tabs into spaces and any other control, format (bidi, zero-width) or
+    line/paragraph separator character into visible U+XXXX text, so report output can't carry
+    terminal escapes (ESC, OSC 8), reorder text (U+202E) or hide characters (U+200B)."""
+    out = []
+    for c in str(v):
+        if c in "\r\n\t":
+            out.append(" ")
+        elif unicodedata.category(c) in ("Cc", "Cf", "Zl", "Zp"):
+            out.append(f"U+{ord(c):04X}")
+        else:
+            out.append(c)
+    return "".join(out)
+
+
 def md_safe(v):
-    """Escape Markdown table/link/emphasis characters and HTML so names render as plain text."""
-    s = str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    s = s.replace("\\", "\\\\").replace("`", "'").replace("\n", " ").replace("\r", " ")
-    for ch in "|[]()!*":
+    """Escape Markdown table/link/emphasis/strikethrough characters, autolinks and HTML so names
+    render as plain text."""
+    s = _visible(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    s = s.replace("\\", "\\\\").replace("`", "'")
+    for ch in "|[]()!*_~":
         s = s.replace(ch, "\\" + ch)
-    return s
+    # break autolinks (GFM/linkify): scheme://, www. and e-mail addresses
+    s = s.replace("://", ":\\/\\/")
+    s = re.sub(r"(?i)\bwww\.", lambda m: m.group(0)[:-1] + "\\.", s)
+    return s.replace("@", "\\@")
 
 
 def md_code_safe(v):
     """Make text safe inside a Markdown code span, where escapes and HTML are literal."""
-    return str(v).replace("`", "'").replace("\r", " ").replace("\n", " ")
+    return _visible(v).replace("`", "'")
 
 
 def fmt(rows, cols, out="table"):
