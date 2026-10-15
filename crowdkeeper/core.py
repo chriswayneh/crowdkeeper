@@ -288,13 +288,31 @@ def _groups_error(r):
     return None
 
 
-def validate_jml(rows, fieldnames, known_groups):
-    """Check the whole CSV before any change is planned; raise ValueError with line numbers."""
+JML_ACTIONS = ("joiner", "mover", "leaver")
+
+
+def validate_jml(rows, fieldnames, known_groups, known_users=None):
+    """Check the whole CSV before any change is planned or made; raise ValueError listing every
+    bad line. Checks: required columns, extra values, action, empty username, groups, and (when
+    known_users is given) that each mover/leaver exists, counting users created by earlier
+    joiner rows."""
     missing = [c for c in JML_REQUIRED if c not in (fieldnames or [])]
     if missing:
         raise ValueError(f"CSV header is missing required column(s): {', '.join(missing)}")
     known, errors = set(known_groups), []
+    users = None if known_users is None else set(known_users)
     for i, r in enumerate(rows, start=2):
+        kind = (r.get("action") or "").strip().lower()
+        name = (r.get("username") or "").strip()
+        if kind not in JML_ACTIONS:
+            errors.append(f"line {i}: unknown action {kind!r} (expected joiner, mover or leaver)")
+        if not name:
+            errors.append(f"line {i}: missing username")
+        elif users is not None:
+            if kind == "joiner":
+                users.add(name)
+            elif kind in ("mover", "leaver") and name not in users:
+                errors.append(f"line {i}: {kind} {name}: no such user")
         if None in r:
             errors.append(f"line {i}: more values than header columns")
         if _groups_error(r):
@@ -311,8 +329,8 @@ def jml(directory, rows, ex, fieldnames=None):
     (e.g. mover then mover back, or joiner twice) see the effect of the earlier rows."""
     if fieldnames is None:
         fieldnames = list(rows[0].keys()) if rows else list(JML_REQUIRED)
-    validate_jml(rows, fieldnames, directory.groups())
     users = {u.name: u for u in directory.users()}
+    validate_jml(rows, fieldnames, directory.groups(), users)  # before ANY ex.do()
     for i, r in enumerate(rows, start=2):
         kind = (r.get("action") or "").strip().lower()
         name = (r.get("username") or "").strip()

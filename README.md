@@ -33,7 +33,8 @@ Requires Python 3.10 or newer. `--demo` uses a built-in fake directory, so no Cr
 | `report [-f FILE]` | One-page Markdown summary for auditors |
 
 **Safety:** `jml` and `fix` are dry-run by default. Changes happen only with `--apply` plus a typed
-`yes` confirmation (or `-y`). Every applied change is appended to the audit log (`--log`, default
+`yes` confirmation (or `-y`). If stdin is not a terminal (piped, redirected, cron, CI) and `-y` isn't
+passed, the prompt refuses and nothing is changed. Every applied change is appended to the audit log (`--log`, default
 `crowdkeeper-audit.json`) as JSON lines. Password fields are never logged.
 
 **Audit log format:** each change writes two lines. An `intent` line is written *before* the change
@@ -74,8 +75,10 @@ no recorded login is reported as `activity-unknown` (review) once the account is
 re-plan after the prompt. Prompts and status messages go to stderr, so stdout is just the table/JSON/CSV.
 
 JML CSV format (`groups` separated by `;` or spaces; for movers it's the full target set). The
-`action` and `username` columns are required. The whole file is checked before anything is planned:
-unknown groups or malformed rows are reported with line numbers and nothing is changed. Rows run in
+`action` and `username` columns are required. The whole file is checked before anything is planned or changed, including through the Python
+API with `Executor(apply=True)`: an unknown action, an empty username, a mover or leaver who
+doesn't exist (counting users created by earlier joiner rows), unknown groups or malformed rows are
+all reported with line numbers and nothing is changed. Rows run in
 order, so several rows for one user build on each other. For a mover, a missing `groups` column,
 a truncated row, or a blank cell (empty, only spaces, or only `;`) leaves memberships alone; it is
 never read as "remove all". To remove every group, write the explicit marker `-` or `none`

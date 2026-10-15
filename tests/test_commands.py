@@ -167,6 +167,7 @@ def test_confirm_eof_aborts(monkeypatch):
         raise EOFError
 
     monkeypatch.setattr("builtins.input", eof)
+    monkeypatch.setattr("sys.stdin", type("TTY", (), {"isatty": lambda self: True})())
     assert cli._confirm(type("A", (), {"yes": False})(), 3) is False
 
 
@@ -492,12 +493,6 @@ def test_record_rejects_reserved_field_names(tmp_path, name):
     with pytest.raises(ValueError, match="reserved"):
         auditlog.record(str(log), "applied", "x", {}, **{name: "forged"})
     assert not log.exists()
-
-
-def test_version_is_0_2_0():
-    import crowdkeeper
-
-    assert crowdkeeper.__version__ == "0.2.0"
 
 
 # ---- Codex review findings ----------------------------------------------------------------

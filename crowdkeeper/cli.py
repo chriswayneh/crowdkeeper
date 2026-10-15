@@ -23,6 +23,9 @@ def _dir(args):
 def _confirm(args, n):
     if args.yes:
         return True
+    if not sys.stdin.isatty():  # piped/redirected stdin can't be a typed "yes": refuse
+        print("stdin is not a terminal; pass -y to apply non-interactively.", file=sys.stderr)
+        return False
     try:
         sys.stderr.write(f"Apply {n} change(s) to Crowd? Type 'yes' to continue: ")
         sys.stderr.flush()

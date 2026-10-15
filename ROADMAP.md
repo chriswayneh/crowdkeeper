@@ -31,7 +31,7 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 - [x] `report`: one-page Markdown summary for auditors, with Markdown escaping
 - [x] `--demo` with a built-in directory of 25 users and 8 groups, never writes
 - [x] Live Crowd client on `requests` against `/rest/usermanagement/1` with paged searches (v0.1.0 warned on `http://`; since v0.2.0 `https://` is required unless `--insecure`, and URLs with embedded credentials are always refused)
-- [x] `jml` and `fix` dry run by default, `--apply` needs a typed `yes` or `-y`, and non-interactive input without `-y` counts as no
+- [x] `jml` and `fix` dry run by default, `--apply` needs a typed `yes` or `-y`, and without `-y` a non-terminal stdin (piped, redirected, cron) is refused, so nothing changes
 - [x] JSON lines audit log with `intent`, `applied` and `failed` entries, per-run `run_id`, secrets never logged
 - [x] Partial failures and Ctrl-C stop the run, log what happened and exit `1`
 - [x] CSV formula injection escaped
