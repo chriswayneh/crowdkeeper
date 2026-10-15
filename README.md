@@ -34,6 +34,12 @@ crowdkeeper audit --days 90
 `yes` confirmation (or `-y`). Every applied change is appended as a JSON line to the audit log
 (`--log`, default `crowdkeeper-audit.json`). Password fields are never logged.
 
+**Partial failures:** if a change fails partway through `jml --apply` or `fix --apply` (including
+Ctrl-C), crowdkeeper stops at that change. Every change already applied is in the audit log, followed
+by a `"action": "failed"` entry with the failed change, the error (secrets scrubbed), the count of
+changes applied before it, and a UTC timestamp. The command then exits with status 1. Nothing is
+rolled back automatically; use the log to finish or reverse the run.
+
 **Demo mode:** `--demo` or `CROWDKEEPER_DEMO=1` uses a built-in directory of 25 users and 8 groups with
 planted problems. Demo mode never writes anything to a directory; `--apply` falls back to a dry run.
 
@@ -160,6 +166,11 @@ Inactivity threshold: 90 days
 
 _Produced by crowdkeeper. Remediate with `crowdkeeper fix` (dry-run by default)._
 ```
+
+## Why no Crowd client library?
+
+The Crowd client (`crowdkeeper/client.py`) is written directly on `requests` against
+`/rest/usermanagement/1`, because there is no maintained Python Crowd client worth depending on.
 
 ## Development
 

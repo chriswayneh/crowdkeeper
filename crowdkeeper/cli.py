@@ -42,7 +42,12 @@ def _run_plan(args, d, planner):
         print("Aborted, nothing changed." if plan else "Nothing to do.")
         return 0
     ex = core.Executor(d, apply=True, log_path=args.log)
-    planner(ex)
+    try:
+        planner(ex)
+    except core.PartialFailure as e:
+        print(f"\nerror: {e}\nStopped. {e.applied} change(s) were applied before the failure; "
+              f"all of them and the failure are recorded in {args.log}", file=sys.stderr)
+        return 1
     print(f"\nApplied {len(ex.plan)} change(s). Audit log: {args.log}")
     return 0
 

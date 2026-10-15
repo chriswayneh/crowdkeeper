@@ -84,6 +84,15 @@ def diff_groups(a, b):
     return rows
 
 
+class PartialFailure(Exception):
+    """A change failed after `applied` earlier changes were already made and logged."""
+
+    def __init__(self, action, details, error, applied):
+        self.action, self.details, self.error, self.applied = action, details, error, applied
+        super().__init__(f"{action} {details} failed after {applied} applied change(s): "
+                         f"{auditlog.safe_error(error)}")
+
+
 class Executor:
     """Plans changes; performs them only when apply=True on a writable directory."""
 
@@ -91,12 +100,22 @@ class Executor:
         if apply and not directory.writable:
             raise PermissionError("demo mode never writes; drop --apply or --demo")
         self.d, self.apply, self.log_path, self.plan = directory, apply, log_path, []
+        self.applied = 0
 
     def do(self, action, fn, *args, **details):
         self.plan.append({"action": action, **details})
         if self.apply:
-            fn(*args)
+            try:
+                fn(*args)
+            except BaseException as e:  # incl. Ctrl-C: partial changes must still be logged
+                auditlog.record(self.log_path, "failed", failed_action=action,
+                                error=auditlog.safe_error(e),
+                                applied_before_failure=self.applied, **details)
+                if not isinstance(e, Exception):
+                    raise
+                raise PartialFailure(action, details, e, self.applied) from e
             auditlog.record(self.log_path, action, **details)
+            self.applied += 1
 
 
 def jml(directory, rows, ex):

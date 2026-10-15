@@ -165,3 +165,104 @@ def test_http_url_warns(caplog):
     from crowdkeeper.client import CrowdClient
     CrowdClient("http://crowd.local", "app", "pw")
     assert "not https" in caplog.text and "pw" not in caplog.text
+
+
+class FailingWritable(FakeWritable):
+    """Fails on the Nth write call, after earlier calls succeeded."""
+
+    def __init__(self, fail_at):
+        super().__init__()
+        self.fail_at = fail_at
+
+    def _maybe_fail(self):
+        if len(self.calls) == self.fail_at:
+            raise RuntimeError("boom secret-pw-123 at https://app:secret-pw-123@crowd.example")
+
+    def deactivate(self, u):
+        self._maybe_fail()
+        super().deactivate(u)
+
+    def remove_from_group(self, u, g):
+        self._maybe_fail()
+        super().remove_from_group(u, g)
+
+    def add_to_group(self, u, g):
+        self._maybe_fail()
+        self.calls.append(("add", u, g))
+
+    def add_user(self, *a):
+        self._maybe_fail()
+        self.calls.append(("create", a[0]))
+
+
+
+def _entries(log):
+    return [json.loads(l) for l in log.read_text().splitlines()]
+
+
+def _check_partial(log, applied, capsys):
+    entries = _entries(log)
+    assert len(entries) == applied + 1
+    assert all(e["action"] != "failed" for e in entries[:-1])
+    fail = entries[-1]
+    assert fail["action"] == "failed" and fail["failed_action"]
+    assert fail["applied_before_failure"] == applied
+    assert "RuntimeError" in fail["error"] and "ts" in fail
+    assert "secret-pw-123" not in log.read_text()
+    assert "secret-pw-123" not in capsys.readouterr().err
+
+
+def test_fix_partial_failure_logged(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CROWD_APP_PASSWORD", "secret-pw-123")
+    d = FailingWritable(fail_at=3)
+    log = tmp_path / "audit.json"
+    ex = core.Executor(d, apply=True, log_path=str(log))
+    with pytest.raises(core.PartialFailure) as ei:
+        core.fix(core.audit(d, 90, NOW), ex)
+    assert ei.value.applied == 3 == len(d.calls)
+    _check_partial(log, 3, capsys)
+
+
+def test_jml_partial_failure_logged(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CROWD_APP_PASSWORD", "secret-pw-123")
+    d = FailingWritable(fail_at=2)
+    name = next(u for u in d.users() if len(u.groups) >= 2).name
+    rows = [{"action": "joiner", "username": "newbie", "groups": "g-a g-b g-c"},
+            {"action": "leaver", "username": name, "groups": ""}]
+    log = tmp_path / "audit.json"
+    ex = core.Executor(d, apply=True, log_path=str(log))
+    with pytest.raises(core.PartialFailure):
+        core.jml(d, rows, ex)
+    _check_partial(log, 2, capsys)
+
+
+@pytest.mark.parametrize("cmd", ["fix", "jml"])
+def test_cli_partial_failure_exits_nonzero(cmd, tmp_path, monkeypatch, capsys):
+    from crowdkeeper import cli
+    monkeypatch.setenv("CROWD_APP_PASSWORD", "secret-pw-123")
+    d = FailingWritable(fail_at=1)
+    log = tmp_path / "audit.json"
+    args = type("A", (), {"apply": True, "output": "table", "log": str(log), "yes": True})()
+    monkeypatch.setattr(cli, "_confirm", lambda a, n: True)
+    if cmd == "fix":
+        planner = lambda ex: core.fix(core.audit(d, 90, NOW), ex)
+    else:
+        rows = [{"action": "joiner", "username": "newbie", "groups": "g-a g-b"}]
+        planner = lambda ex: core.jml(d, rows, ex)
+    assert cli._run_plan(args, d, planner) == 1
+    err = capsys.readouterr().err
+    assert "1 change(s) were applied" in err and "secret-pw-123" not in err
+    entries = _entries(log)
+    assert len(entries) == 2 and entries[-1]["action"] == "failed"
+
+
+def test_interrupt_mid_apply_still_logged(tmp_path):
+    class Interrupting(FakeWritable):
+        def deactivate(self, u):
+            raise KeyboardInterrupt
+    d = Interrupting()
+    log = tmp_path / "audit.json"
+    ex = core.Executor(d, apply=True, log_path=str(log))
+    with pytest.raises(KeyboardInterrupt):
+        core.fix(core.audit(d, 90, NOW), ex)
+    assert _entries(log)[-1]["action"] == "failed"
