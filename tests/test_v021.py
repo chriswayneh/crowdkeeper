@@ -100,3 +100,27 @@ def test_version_is_0_2_1():
 
     assert crowdkeeper.__version__ == "0.2.1"
     assert json.dumps(crowdkeeper.__version__)
+
+
+def test_cli_non_tty_with_y_still_applies(tmp_path, monkeypatch):
+    """cron/CI: --apply -y with non-terminal stdin must still apply."""
+    d = FakeWritable()
+    monkeypatch.setattr(cli, "_dir", lambda a: (d, None))
+    monkeypatch.setattr("sys.stdin", _Stdin("", tty=False))
+    p = tmp_path / "jml.csv"
+    p.write_text("action,username,groups\nleaver,frank,\n")
+    log = tmp_path / "audit.json"
+    assert main(["jml", str(p), "--apply", "-y", "--log", str(log)]) == 0
+    assert d.calls and log.exists()
+
+
+def test_leaver_then_joiner_and_duplicate_joiner_validate():
+    d = FakeWritable()
+    rows = [
+        {"action": "leaver", "username": "frank", "groups": ""},
+        {"action": "joiner", "username": "frank", "groups": ""},
+        {"action": "joiner", "username": "newbie", "groups": ""},
+        {"action": "joiner", "username": "newbie", "groups": ""},
+    ]
+    plan = core.jml(d, rows, core.Executor(d))
+    assert [p["action"] for p in plan].count("create-user") == 1
