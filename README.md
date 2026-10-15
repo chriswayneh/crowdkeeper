@@ -88,7 +88,9 @@ a truncated row, or a blank cell (empty, only spaces, or only `;`) leaves member
 never read as "remove all". To remove every group, write the explicit marker `-` or `none`
 (case-insensitive, unquoted). To name a real group literally called `none` or `-`, wrap it in
 single quotes inside the cell, e.g. `jira-users;'none';'-'`; any single-quoted token is taken as a
-literal group name, never as the marker. Combining `-`/`none` with group names is a validation error with the line number:
+literal group name, never as the marker. Quotes cannot protect spaces or `;` (they still split
+tokens), and an unbalanced (`'none`) or empty (`''`) quote is kept as-is and so fails as an unknown
+group with the line number; nothing is changed. Combining `-`/`none` with group names is a validation error with the line number:
 
 ```csv
 action,username,display_name,email,groups

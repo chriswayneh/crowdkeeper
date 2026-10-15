@@ -400,3 +400,12 @@ def test_cli_quoted_literal_group_mixed(odd_groups, tmp_path, capsys):
         ("add-to-group", "none"),
         ("remove-from-group", "bitbucket-users"),
     ]
+
+
+@pytest.mark.parametrize("cell,bad", [("''", "''"), ("'none", "'none"), ("none'", "none'"), ("'a b'", "'a")])
+def test_malformed_quotes_are_unknown_group_line_errors(cell, bad):
+    d = DemoDirectory()
+    rows = [{"action": "mover", "username": "bob", "groups": cell}]
+    with pytest.raises(ValueError, match=r"line 2: unknown group"):
+        core.jml(d, rows, core.Executor(d), ["action", "username", "groups"])
+    assert core._groups_of({"groups": cell})[0] == bad
