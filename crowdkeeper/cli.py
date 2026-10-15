@@ -20,12 +20,16 @@ def _dir(args):
     return CrowdClient.from_env(insecure=getattr(args, "insecure", False)), None
 
 
+REFUSED = None  # _confirm result: non-TTY stdin without -y (caller exits 2)
+
+
 def _confirm(args, n):
+    """True to apply, False if declined at the prompt, REFUSED (None) if stdin isn't a TTY."""
     if args.yes:
         return True
     if not sys.stdin.isatty():  # piped/redirected stdin can't be a typed "yes": refuse
         print("stdin is not a terminal; pass -y to apply non-interactively.", file=sys.stderr)
-        return False
+        return REFUSED
     try:
         sys.stderr.write(f"Apply {n} change(s) to Crowd? Type 'yes' to continue: ")
         sys.stderr.flush()
@@ -48,9 +52,13 @@ def _run_plan(args, d, planner):
             file=sys.stderr,
         )
         return 0
-    if not plan or not _confirm(args, len(plan)):
-        print("Aborted, nothing changed." if plan else "Nothing to do.", file=sys.stderr)
+    if not plan:
+        print("Nothing to do.", file=sys.stderr)
         return 0
+    ok = _confirm(args, len(plan))
+    if not ok:
+        print("Aborted, nothing changed.", file=sys.stderr)
+        return 2 if ok is REFUSED else 0
     ex = core.Executor(d, apply=True, log_path=args.log)
     try:
         ex.execute(preview.ops)  # exactly the confirmed plan, never re-planned

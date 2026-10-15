@@ -74,7 +74,7 @@ class _Stdin(io.StringIO):
 
 def test_confirm_refuses_non_tty_stdin_even_with_yes_piped(monkeypatch):
     monkeypatch.setattr("sys.stdin", _Stdin("yes\n", tty=False))
-    assert cli._confirm(type("A", (), {"yes": False})(), 3) is False
+    assert cli._confirm(type("A", (), {"yes": False})(), 3) is cli.REFUSED
 
 
 def test_confirm_tty_yes_still_accepts(monkeypatch):
@@ -89,7 +89,7 @@ def test_cli_non_tty_without_y_aborts_nothing_changed(tmp_path, monkeypatch, cap
     p = tmp_path / "jml.csv"
     p.write_text("action,username,groups\nleaver,frank,\n")
     log = tmp_path / "audit.json"
-    assert main(["jml", str(p), "--apply", "--log", str(log)]) == 0
+    assert main(["jml", str(p), "--apply", "--log", str(log)]) == 2
     err = capsys.readouterr().err
     assert "Aborted, nothing changed." in err and "-y" in err
     assert d.calls == [] and not log.exists()
@@ -124,3 +124,26 @@ def test_leaver_then_joiner_and_duplicate_joiner_validate():
     ]
     plan = core.jml(d, rows, core.Executor(d))
     assert [p["action"] for p in plan].count("create-user") == 1
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t"])
+def test_api_valid_row_then_joiner_with_blank_username_changes_nothing(blank, tmp_path):
+    d = FakeWritable()
+    log = tmp_path / "audit.json"
+    ex = core.Executor(d, apply=True, log_path=str(log))
+    rows = [LEAVER, {"action": "joiner", "username": blank, "groups": "jira-users"}]
+    with pytest.raises(ValueError, match=r"line 3: missing username"):
+        core.jml(d, rows, ex)
+    assert d.calls == [] and ex.applied == 0 and not log.exists()
+
+
+def test_cli_tty_typed_no_still_exits_0(tmp_path, monkeypatch, capsys):
+    """Only the non-TTY refusal exits 2; a human typing anything but 'yes' stays a clean abort."""
+    d = FakeWritable()
+    monkeypatch.setattr(cli, "_dir", lambda a: (d, None))
+    monkeypatch.setattr("sys.stdin", _Stdin("no\n", tty=True))
+    p = tmp_path / "jml.csv"
+    p.write_text("action,username,groups\nleaver,frank,\n")
+    assert main(["jml", str(p), "--apply", "--log", str(tmp_path / "a.json")]) == 0
+    assert "Aborted, nothing changed." in capsys.readouterr().err
+    assert d.calls == []

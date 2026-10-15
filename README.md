@@ -34,7 +34,8 @@ Requires Python 3.10 or newer. `--demo` uses a built-in fake directory, so no Cr
 
 **Safety:** `jml` and `fix` are dry-run by default. Changes happen only with `--apply` plus a typed
 `yes` confirmation (or `-y`). If stdin is not a terminal (piped, redirected, cron, CI) and `-y` isn't
-passed, the prompt refuses and nothing is changed. Every applied change is appended to the audit log (`--log`, default
+passed, the prompt refuses, nothing is changed, and the command exits with status 2 so cron and CI
+see a failure. Declining at an interactive prompt still exits 0. Every applied change is appended to the audit log (`--log`, default
 `crowdkeeper-audit.json`) as JSON lines. Password fields are never logged.
 
 **Audit log format:** each change writes two lines. An `intent` line is written *before* the change

@@ -11,7 +11,9 @@ All notable changes to this project are documented here. This project follows
   don't exist (users created by earlier joiner rows count). Previously a valid row before a bad one
   could already have been applied through the API. All bad lines are reported together.
 - The `--apply` confirmation prompt refuses when stdin is not a terminal and `-y` isn't passed, so
-  piped input such as `echo yes |` can't confirm a change. Previously only end-of-input counted as no.
+  piped input such as `echo yes |` can't confirm a change, and exits with status 2 so cron and CI
+  see a failure. Previously only end-of-input counted as no. Declining at an interactive prompt
+  still exits 0.
 
 ## [0.2.0] - 2026-10-15
 
