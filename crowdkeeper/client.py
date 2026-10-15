@@ -2,7 +2,7 @@
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 import requests
@@ -51,6 +51,7 @@ def _items(d, key, what):
     return items
 
 
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _MAX_MS = 253402300799999  # 9999-12-31T23:59:59.999Z
 
 
@@ -60,7 +61,7 @@ def _ms(v, what):
         v = int(v)  # capped first: int() on a huge digit string is slow and can raise ValueError
     if type(v) is not int or not 0 <= v <= _MAX_MS:
         raise CrowdError(f"unexpected Crowd response for {what}: not a valid timestamp")
-    return datetime.fromtimestamp(v / 1000, tz=timezone.utc)
+    return _EPOCH + timedelta(milliseconds=v)  # exact; float division loses sub-ms precision
 
 
 def _str(u, key, what):

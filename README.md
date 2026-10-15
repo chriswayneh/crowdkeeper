@@ -89,8 +89,8 @@ updates on some logins (SSO and remembered sessions in connected apps may not up
 no recorded login is reported as `activity-unknown` (review) once the account is older than `--days`
 (or its creation date is unknown), and `fix` never deactivates them. `--days` must be at least 1.
 
-**Approved plan only:** `--apply` executes exactly the plan you confirmed; it does not re-read Crowd and
-re-plan after the prompt. Prompts and status messages go to stderr, so stdout is just the table/JSON/CSV.
+**Approved plan only:** `--apply` executes exactly the plan you confirmed, after re-reading Crowd to check
+it is still current (drift exits 1 and nothing changes). Prompts and status messages go to stderr, so stdout is just the table/JSON/CSV.
 Output is terminal-safe: in the table and CSV formats, the Markdown report and error messages,
 tabs, line breaks and every control, bidi, zero-width or line/paragraph separator character in a
 name are shown as Python-style escapes (`\t`, `\n`, `\u001b`, `\u202e`), and a literal backslash

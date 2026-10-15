@@ -16,6 +16,8 @@ All notable changes to this project are documented here. This project follows
     or an out-of-range timestamp is now an error (exit 1) instead of being read with a default.
 
 ### Fixed
+- Crowd millisecond timestamps convert exactly (integer arithmetic), so the year-9999 limit and
+  sub-millisecond values no longer drift from float rounding.
 - `jml` leavers are now deactivated before their group memberships are removed, so a failed removal
   can no longer leave the account active (the plan order changed: `deactivate-user` comes first).
 - The Crowd client no longer follows redirects and treats every non-2xx answer (including a 3xx to a
