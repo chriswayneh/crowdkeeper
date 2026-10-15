@@ -147,3 +147,13 @@ def test_cli_tty_typed_no_still_exits_0(tmp_path, monkeypatch, capsys):
     assert main(["jml", str(p), "--apply", "--log", str(tmp_path / "a.json")]) == 0
     assert "Aborted, nothing changed." in capsys.readouterr().err
     assert d.calls == []
+
+
+def test_cli_fix_non_tty_without_y_exits_2(monkeypatch, capsys):
+    """fix shares _run_plan with jml, so its non-TTY refusal also exits 2."""
+    d = FakeWritable()
+    monkeypatch.setattr(cli, "_dir", lambda a: (d, None))
+    monkeypatch.setattr("sys.stdin", _Stdin("yes\n", tty=False))
+    assert main(["fix", "--apply"]) == 2
+    assert "Aborted, nothing changed." in capsys.readouterr().err
+    assert d.calls == []
