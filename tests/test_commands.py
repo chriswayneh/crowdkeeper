@@ -109,13 +109,19 @@ def test_fix_apply_writes_audit_log(tmp_path):
     ex = core.Executor(d, apply=True, log_path=str(log))
     core.fix(core.audit(d, 90, NOW), ex)
     entries = [json.loads(l) for l in log.read_text().splitlines()]
-    assert len(entries) == len(d.calls) == 10
+    assert len(d.calls) == 10 and len(entries) == 20
     assert all("ts" in e for e in entries)
+    # every change: intent entry, then applied entry, same seq and detail
+    for i in range(0, 20, 2):
+        a, b = entries[i], entries[i + 1]
+        assert (a["event"], b["event"]) == ("intent", "applied")
+        assert a["seq"] == b["seq"] == i // 2 + 1
+        assert a["action"] == b["action"] and a["detail"] == b["detail"] and a["detail"]
 
 
 def test_auditlog_drops_passwords(tmp_path):
     p = tmp_path / "x.json"
-    auditlog.record(str(p), "create-user", user="u", password="hunter2")
+    auditlog.record(str(p), "applied", "create-user", {"user": "u", "password": "hunter2"})
     assert "hunter2" not in p.read_text()
 
 
@@ -202,10 +208,12 @@ def _entries(log):
 
 def _check_partial(log, applied, capsys):
     entries = _entries(log)
-    assert len(entries) == applied + 1
-    assert all(e["action"] != "failed" for e in entries[:-1])
-    fail = entries[-1]
-    assert fail["action"] == "failed" and fail["failed_action"]
+    # applied changes: intent+applied pairs; then the failed change's intent and failure
+    assert len(entries) == 2 * applied + 2
+    assert [e["event"] for e in entries[:-2]] == ["intent", "applied"] * applied
+    intent, fail = entries[-2], entries[-1]
+    assert intent["event"] == "intent" and fail["event"] == "failed"
+    assert fail["action"] == intent["action"] and fail["seq"] == intent["seq"] == applied + 1
     assert fail["applied_before_failure"] == applied
     assert "RuntimeError" in fail["error"] and "ts" in fail
     assert "secret-pw-123" not in log.read_text()
@@ -253,7 +261,7 @@ def test_cli_partial_failure_exits_nonzero(cmd, tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "1 change(s) were applied" in err and "secret-pw-123" not in err
     entries = _entries(log)
-    assert len(entries) == 2 and entries[-1]["action"] == "failed"
+    assert [e["event"] for e in entries] == ["intent", "applied", "intent", "failed"]
 
 
 def test_interrupt_mid_apply_still_logged(tmp_path):
@@ -265,7 +273,7 @@ def test_interrupt_mid_apply_still_logged(tmp_path):
     ex = core.Executor(d, apply=True, log_path=str(log))
     with pytest.raises(KeyboardInterrupt):
         core.fix(core.audit(d, 90, NOW), ex)
-    assert _entries(log)[-1]["action"] == "failed"
+    assert [e["event"] for e in _entries(log)][-2:] == ["intent", "failed"]
 
 
 def test_cli_interrupt_exits_1_without_traceback(tmp_path, monkeypatch, capsys):
@@ -280,4 +288,108 @@ def test_cli_interrupt_exits_1_without_traceback(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "_confirm", lambda a, n: True)
     assert cli._run_plan(args, d, lambda ex: core.fix(core.audit(d, 90, NOW), ex)) == 1
     assert "Interrupted" in capsys.readouterr().err
-    assert _entries(log)[-1]["action"] == "failed"
+    assert [e["event"] for e in _entries(log)][-2:] == ["intent", "failed"]
+
+
+def test_intent_logged_before_change_runs(tmp_path):
+    """The intent entry is on disk before the directory call happens (Ctrl-C safety)."""
+    log = tmp_path / "audit.json"
+    seen = []
+
+    class Peeking(FakeWritable):
+        def deactivate(self, u):
+            seen.append(_entries(log)[-1])
+            super().deactivate(u)
+    d = Peeking()
+    core.fix(core.audit(d, 90, NOW), core.Executor(d, apply=True, log_path=str(log)))
+    assert seen and all(e["event"] == "intent" and e["detail"].get("user") for e in seen)
+
+
+def test_hard_kill_mid_change_leaves_intent(tmp_path):
+    """Simulate the process dying inside a change (no except handler runs): intent is logged."""
+    class Dying(FakeWritable):
+        def deactivate(self, u):
+            raise SystemExit  # BaseException; stands in for a kill
+    d = Dying()
+    log = tmp_path / "audit.json"
+    with pytest.raises(SystemExit):
+        core.fix(core.audit(d, 90, NOW), core.Executor(d, apply=True, log_path=str(log)))
+    events = [e["event"] for e in _entries(log)]
+    assert "intent" in events and events.count("intent") == events.count("applied") + 1
+
+
+def test_failure_log_unwritable_still_reports_original_error(tmp_path, monkeypatch, capsys):
+    from crowdkeeper import cli
+    monkeypatch.setenv("CROWD_APP_PASSWORD", "secret-pw-123")
+    d = FailingWritable(fail_at=1)
+    log = tmp_path / "audit.json"
+    real = auditlog.record
+
+    def flaky(path, event, *a, **k):
+        if event == "failed":
+            raise OSError("No space left on device")
+        return real(path, event, *a, **k)
+    monkeypatch.setattr(auditlog, "record", flaky)
+    args = type("A", (), {"apply": True, "output": "table", "log": str(log), "yes": True})()
+    monkeypatch.setattr(cli, "_confirm", lambda a, n: True)
+    assert cli._run_plan(args, d, lambda ex: core.fix(core.audit(d, 90, NOW), ex)) == 1
+    err = capsys.readouterr().err
+    assert "RuntimeError" in err  # the original error
+    assert "No space left on device" in err and "could not be written" in err
+    assert "secret-pw-123" not in err
+
+
+def test_interrupt_with_unwritable_log_still_exits_1(tmp_path, monkeypatch, capsys):
+    from crowdkeeper import cli
+
+    class Interrupting(FakeWritable):
+        def deactivate(self, u):
+            raise KeyboardInterrupt
+    real = auditlog.record
+
+    def flaky(path, event, *a, **k):
+        if event == "failed":
+            raise OSError("read-only file system")
+        return real(path, event, *a, **k)
+    monkeypatch.setattr(auditlog, "record", flaky)
+    d = Interrupting()
+    args = type("A", (), {"apply": True, "output": "table",
+                          "log": str(tmp_path / "a.json"), "yes": True})()
+    monkeypatch.setattr(cli, "_confirm", lambda a, n: True)
+    assert cli._run_plan(args, d, lambda ex: core.fix(core.audit(d, 90, NOW), ex)) == 1
+    err = capsys.readouterr().err
+    assert "KeyboardInterrupt" in err and "read-only file system" in err
+
+
+def test_intent_write_failure_skips_change(tmp_path, monkeypatch):
+    d = FakeWritable()
+    monkeypatch.setattr(auditlog, "record",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+    ex = core.Executor(d, apply=True, log_path=str(tmp_path / "a.json"))
+    with pytest.raises(core.PartialFailure) as ei:
+        core.fix(core.audit(d, 90, NOW), ex)
+    assert d.calls == [] and ei.value.log_error is not None
+
+
+def test_detail_keys_cannot_overwrite_log_fields(tmp_path):
+    log = tmp_path / "a.json"
+    auditlog.record(str(log), "failed", "deactivate-user",
+                    {"event": "applied", "action": "x", "error": "fake", "ts": "1970", "user": "bob"},
+                    seq=3, error="real")
+    e = _entries(log)[0]
+    assert e["event"] == "failed" and e["action"] == "deactivate-user" and e["error"] == "real"
+    assert e["ts"] != "1970" and e["seq"] == 3
+    assert e["detail"] == {"event": "applied", "action": "x", "error": "fake",
+                           "ts": "1970", "user": "bob"}
+
+
+def test_executor_detail_collision_kept_nested(tmp_path):
+    d = FailingWritable(fail_at=0)
+    log = tmp_path / "a.json"
+    ex = core.Executor(d, apply=True, log_path=str(log))
+    with pytest.raises(core.PartialFailure):
+        ex.do("deactivate-user", d.deactivate, "bob", user="bob", error="spoof",
+              applied_before_failure=99)
+    fail = _entries(log)[-1]
+    assert fail["applied_before_failure"] == 0 and "RuntimeError" in fail["error"]
+    assert fail["detail"] == {"user": "bob", "error": "spoof", "applied_before_failure": 99}

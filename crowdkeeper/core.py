@@ -1,3 +1,4 @@
+import sys
 import csv
 import io
 import json
@@ -85,37 +86,64 @@ def diff_groups(a, b):
 
 
 class PartialFailure(Exception):
-    """A change failed after `applied` earlier changes were already made and logged."""
+    """A change failed after `applied` earlier changes were already made.
 
-    def __init__(self, action, details, error, applied):
+    `log_error` is set when the failure entry could not be written to the audit log."""
+
+    def __init__(self, action, details, error, applied, log_error=None):
         self.action, self.details, self.error, self.applied = action, details, error, applied
+        self.log_error = log_error
         super().__init__(f"{action} {details} failed after {applied} applied change(s): "
                          f"{auditlog.safe_error(error)}")
 
 
 class Executor:
-    """Plans changes; performs them only when apply=True on a writable directory."""
+    """Plans changes; performs them only when apply=True on a writable directory.
+
+    Each applied change writes an "intent" entry before the call and an "applied" entry after,
+    so an interrupt can never leave an attempted change unlogged."""
 
     def __init__(self, directory, apply=False, log_path="crowdkeeper-audit.json"):
         if apply and not directory.writable:
             raise PermissionError("demo mode never writes; drop --apply or --demo")
         self.d, self.apply, self.log_path, self.plan = directory, apply, log_path, []
         self.applied = 0
+        self.seq = 0
+        self.log_error = None
+
+    def _fail(self, action, details, e, seq):
+        log_error = None
+        try:
+            auditlog.record(self.log_path, "failed", action, details, seq=seq,
+                            error=auditlog.safe_error(e), applied_before_failure=self.applied)
+        except Exception as le:  # the log itself is broken: never hide the original error
+            log_error = self.log_error = le
+            print(f"error: {action} failed: {auditlog.safe_error(e)}\n"
+                  f"error: could not write the failure to audit log {self.log_path}: "
+                  f"{auditlog.safe_error(le)}", file=sys.stderr)
+        if not isinstance(e, Exception):
+            raise e
+        raise PartialFailure(action, details, e, self.applied, log_error) from e
 
     def do(self, action, fn, *args, **details):
         self.plan.append({"action": action, **details})
-        if self.apply:
-            try:
-                fn(*args)
-            except BaseException as e:  # incl. Ctrl-C: partial changes must still be logged
-                auditlog.record(self.log_path, "failed", failed_action=action,
-                                error=auditlog.safe_error(e),
-                                applied_before_failure=self.applied, **details)
-                if not isinstance(e, Exception):
-                    raise
-                raise PartialFailure(action, details, e, self.applied) from e
-            auditlog.record(self.log_path, action, **details)
-            self.applied += 1
+        if not self.apply:
+            return
+        self.seq += 1
+        seq = self.seq
+        try:
+            auditlog.record(self.log_path, "intent", action, details, seq=seq)
+        except Exception as e:  # can't log it, so don't do it
+            self._fail(action, details, e, seq)
+        try:
+            fn(*args)
+        except BaseException as e:  # incl. Ctrl-C
+            self._fail(action, details, e, seq)
+        self.applied += 1
+        try:
+            auditlog.record(self.log_path, "applied", action, details, seq=seq)
+        except Exception as e:  # change happened and its intent entry is logged
+            self._fail(action, details, e, seq)
 
 
 def jml(directory, rows, ex):

@@ -6,9 +6,12 @@ from datetime import datetime, timezone
 SENSITIVE = {"password", "secret", "token"}
 
 
-def record(path, action, **details):
-    entry = {"ts": datetime.now(timezone.utc).isoformat(), "action": action,
-             **{k: v for k, v in details.items() if k not in SENSITIVE}}
+def record(path, event, action, detail=None, **fields):
+    """Append one JSON line. `event` is intent|applied|failed; the change's own keys go
+    under a nested "detail" object so they can never overwrite top-level fields."""
+    entry = {"ts": datetime.now(timezone.utc).isoformat(), "event": event, "action": action,
+             **{k: v for k, v in fields.items() if k not in SENSITIVE},
+             "detail": {k: v for k, v in (detail or {}).items() if k not in SENSITIVE}}
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
     return entry

@@ -31,14 +31,29 @@ crowdkeeper audit --days 90
 | `report [-f FILE]` | One-page Markdown summary for auditors |
 
 **Safety:** `jml` and `fix` are dry-run by default. Changes happen only with `--apply` plus a typed
-`yes` confirmation (or `-y`). Every applied change is appended as a JSON line to the audit log
-(`--log`, default `crowdkeeper-audit.json`). Password fields are never logged.
+`yes` confirmation (or `-y`). Every applied change is appended to the audit log (`--log`, default
+`crowdkeeper-audit.json`) as JSON lines. Password fields are never logged.
+
+**Audit log format:** each change writes two lines. An `intent` line is written *before* the change
+is sent to Crowd, and an `applied` line after it succeeds, so even a Ctrl-C or kill mid-change leaves
+a record. An `intent` with no matching `applied` or `failed` line (same `seq`) means the outcome is
+unknown; check that change in Crowd. The change's own fields sit under a nested `detail` object, so
+they can never overwrite the top-level fields.
+
+```json
+{"ts": "2026-10-15T02:10:01+00:00", "event": "intent", "action": "deactivate-user", "seq": 1, "detail": {"user": "frank", "reason": "last login 140d ago"}}
+{"ts": "2026-10-15T02:10:01+00:00", "event": "applied", "action": "deactivate-user", "seq": 1, "detail": {"user": "frank", "reason": "last login 140d ago"}}
+{"ts": "2026-10-15T02:10:02+00:00", "event": "intent", "action": "remove-from-group", "seq": 2, "detail": {"user": "ivan", "group": "jira-users"}}
+{"ts": "2026-10-15T02:10:02+00:00", "event": "failed", "action": "remove-from-group", "seq": 2, "error": "RuntimeError: ...", "applied_before_failure": 1, "detail": {"user": "ivan", "group": "jira-users"}}
+```
 
 **Partial failures:** if a change fails partway through `jml --apply` or `fix --apply` (including
 Ctrl-C), crowdkeeper stops at that change. Every change already applied is in the audit log, followed
-by a `"action": "failed"` entry with the failed change, the error (secrets scrubbed), the count of
-changes applied before it, and a UTC timestamp. The command then exits with status 1. Nothing is
-rolled back automatically; use the log to finish or reverse the run.
+by a `"event": "failed"` entry for the failed change with the error (secrets scrubbed) and the count of
+changes applied before it. The command then exits with status 1. If the audit log itself can't be
+written (full disk, bad permissions), the original error and the log error are printed to stderr and
+the command still exits 1; if the `intent` line can't be written, the change is not attempted. Nothing
+is rolled back automatically; use the log to finish or reverse the run.
 
 **Demo mode:** `--demo` or `CROWDKEEPER_DEMO=1` uses a built-in directory of 25 users and 8 groups with
 planted problems. Demo mode never writes anything to a directory; `--apply` falls back to a dry run.

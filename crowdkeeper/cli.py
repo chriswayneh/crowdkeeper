@@ -45,12 +45,17 @@ def _run_plan(args, d, planner):
     try:
         planner(ex)
     except core.PartialFailure as e:
+        where = (f"the audit log {args.log} could not be written, so check it by hand"
+                 if e.log_error else f"all of them and the failure are recorded in {args.log}")
         print(f"\nerror: {e}\nStopped. {e.applied} change(s) were applied before the failure; "
-              f"all of them and the failure are recorded in {args.log}", file=sys.stderr)
+              f"{where}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
+        where = (f"the audit log {args.log} could not be written, so check it by hand"
+                 if ex.log_error else
+                 f"all of them and the interrupted change are recorded in {args.log}")
         print(f"\nInterrupted. {ex.applied} change(s) were applied before the interrupt; "
-              f"all of them and the interrupted change are recorded in {args.log}", file=sys.stderr)
+              f"{where}", file=sys.stderr)
         return 1
     print(f"\nApplied {len(ex.plan)} change(s). Audit log: {args.log}")
     return 0
