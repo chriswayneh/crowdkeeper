@@ -649,8 +649,10 @@ def test_f6_apply_executes_only_the_confirmed_plan(tmp_path, monkeypatch):
 
     monkeypatch.setattr(cli, "_confirm", lambda a, n: True)
     args = type("A", (), {"apply": True, "output": "table", "log": str(tmp_path / "a.json"), "yes": True})()
-    assert cli._run_plan(args, d, planner) == 0
-    assert planned == [1] and d.calls == [("remove", "bob", "bitbucket-users")]
+    # v0.2.3: a fresh re-plan before apply detects the drift; neither the stale confirmed plan
+    # nor the new unconfirmed one is applied
+    assert cli._run_plan(args, d, planner) == 1
+    assert planned == [1, 1] and d.calls == []
 
 
 def _client(monkeypatch, pages):

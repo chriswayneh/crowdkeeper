@@ -40,6 +40,17 @@ def check_url(url, insecure=False):
     )
 
 
+def _items(d, key, what):
+    """Return d[key] as a list of objects that each have a string "name", or raise CrowdError:
+    a malformed answer must never read as an empty (clean) result."""
+    items = d.get(key) if isinstance(d, dict) else None
+    if not isinstance(items, list) or not all(
+        isinstance(x, dict) and isinstance(x.get("name"), str) for x in items
+    ):
+        raise CrowdError(f"unexpected Crowd response for {what}: expected a {key!r} list of named objects")
+    return items
+
+
 class CrowdClient:
     writable = True
 
@@ -64,8 +75,9 @@ class CrowdClient:
 
     def _req(self, method, path, **kw):
         log.debug("%s %s params=%s", method, path, kw.get("params"))
-        r = self.s.request(method, self.url + path, timeout=self.timeout, **kw)
-        if r.status_code >= 400:
+        # never follow redirects: a 3xx (e.g. to a login page) must not count as success
+        r = self.s.request(method, self.url + path, timeout=self.timeout, allow_redirects=False, **kw)
+        if not 200 <= r.status_code < 300:
             raise CrowdError(f"{method} {path} -> HTTP {r.status_code}", r.status_code)
         return r.json() if r.content else None
 
@@ -77,7 +89,7 @@ class CrowdClient:
                 "/search",
                 params={"entity-type": entity, "expand": entity, "start-index": start, "max-results": 1000},
             )
-            items = d.get(entity + "s", [])
+            items = _items(d, entity + "s", f"{entity} search")
             out += items
             if len(items) < 1000:
                 return out
@@ -85,7 +97,9 @@ class CrowdClient:
 
     def _last_login(self, name):
         d = self._req("GET", "/user/attribute", params={"username": name})
-        for a in (d or {}).get("attributes", []):
+        if d is None or (isinstance(d, dict) and "attributes" not in d):
+            return None  # no attributes recorded: login activity unknown (flagged for review only)
+        for a in _items(d, "attributes", f"attributes of {name}"):
             if a.get("name") == "lastAuthenticated" and a.get("values"):
                 return datetime.fromtimestamp(int(a["values"][0]) / 1000, tz=timezone.utc)
         return None
@@ -93,15 +107,12 @@ class CrowdClient:
     def _direct_groups(self, name, page=1000):
         out, start = [], 0
         while True:
-            d = (
-                self._req(
-                    "GET",
-                    "/user/group/direct",
-                    params={"username": name, "start-index": start, "max-results": page},
-                )
-                or {}
+            d = self._req(
+                "GET",
+                "/user/group/direct",
+                params={"username": name, "start-index": start, "max-results": page},
             )
-            items = d.get("groups", [])
+            items = _items(d, "groups", f"groups of {name}")
             out += [x["name"] for x in items]
             if len(items) < page:
                 return sorted(out)
@@ -149,6 +160,12 @@ class CrowdClient:
         self._req("DELETE", "/user/group/direct", params={"username": user, "groupname": group})
 
     def deactivate(self, user):
+        # Send back only the identity fields Crowd requires plus active=False, not the whole
+        # fetched entity (attributes, password link, expand data). Crowd has no ETag/If-Match
+        # for users, so a profile edit landing between this GET and PUT can still be overwritten.
         u = self._req("GET", "/user", params={"username": user})
-        u["active"] = False
-        self._req("PUT", "/user", params={"username": user}, json=u)
+        if not isinstance(u, dict) or u.get("name") != user:
+            raise CrowdError(f"unexpected Crowd response for user {user!r}; not deactivated")
+        body = {k: u.get(k, "") for k in ("name", "first-name", "last-name", "display-name", "email")}
+        body["active"] = False
+        self._req("PUT", "/user", params={"username": user}, json=body)

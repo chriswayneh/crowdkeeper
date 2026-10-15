@@ -3,6 +3,27 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.3] - Unreleased
+
+### Fixed
+- `jml` leavers are now deactivated before their group memberships are removed, so a failed removal
+  can no longer leave the account active (the plan order changed: `deactivate-user` comes first).
+- The Crowd client no longer follows redirects and treats every non-2xx answer (including a 3xx to a
+  login page) as an error, so such a change is logged as failed instead of applied.
+- `--apply` re-reads the directory and re-plans right before applying; if the plan differs from the
+  confirmed preview, it exits 1 and changes nothing. `fix` now recomputes the audit for that check.
+- Deactivation sends only the identity fields and `active: false`, not the whole fetched user, and
+  refuses to write if Crowd's answer isn't the requested user.
+- Malformed Crowd responses (missing or non-list `users`/`groups`/`attributes`, entries without a
+  name) raise an error instead of reading as empty results (a falsely clean audit or zero removals).
+- `jml` CSV headers are matched after stripping spaces, so `groups ` is no longer silently ignored,
+  and unknown columns are rejected with exit 2.
+- `report` reads the directory once, so all sections describe the same state.
+
+### Documentation
+- README states that membership is direct-only (nested groups aren't read or changed) and documents
+  the re-check before apply.
+
 ## [0.2.2] - 2026-10-15
 
 ### Changed

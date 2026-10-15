@@ -86,10 +86,14 @@ def test_piped_yes_without_y_does_not_apply(tmp_path, monkeypatch, capsys):
     assert d.calls == []
 
 
-def test_version_is_0_2_2():
+def test_version_matches_pyproject():
+    from pathlib import Path
+
     import crowdkeeper
 
-    assert crowdkeeper.__version__ == "0.2.2"
+    text = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text()
+    assert f'version = "{crowdkeeper.__version__}"' in text
+    assert crowdkeeper.__version__ == "0.2.3"
 
 
 VALID_CSVS = [

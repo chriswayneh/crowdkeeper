@@ -140,6 +140,25 @@ def fmt(rows, cols, out="table"):
     return "\n".join([line(cols), line("-" * w for w in widths)] + [line(row) for row in cells])
 
 
+class Snapshot:
+    """One read of a directory: users() and groups() are fetched once and reused, so every
+    section of a report describes the same state (and the directory is not read repeatedly)."""
+
+    writable = False
+
+    def __init__(self, directory):
+        self._users, self._groups = directory.users(), list(directory.groups())
+
+    def users(self):
+        return [
+            User(u.name, u.display_name, u.email, u.active, u.last_login, list(u.groups), u.created)
+            for u in self._users
+        ]
+
+    def groups(self):
+        return list(self._groups)
+
+
 def export_groups(directory):
     m = {g: [] for g in directory.groups()}
     for u in directory.users():
@@ -278,6 +297,7 @@ class Executor:
 
 
 JML_REQUIRED = ("action", "username")
+JML_COLUMNS = (*JML_REQUIRED, "display_name", "email", "groups")
 
 
 NO_GROUPS = {"-", "none"}
@@ -413,12 +433,13 @@ def jml(directory, rows, ex, fieldnames=None, lines=None):
         elif kind == "leaver":
             if not cur:
                 raise ValueError(f"CSV line {i}: leaver {name}: no such user")
-            for g in cur.groups:
-                ex.do("remove-from-group", ex.d.remove_from_group, name, g, user=name, group=g)
-            cur.groups = []
+            # deactivate first: if a later group removal fails, the account is already locked
             if cur.active:
                 ex.do("deactivate-user", ex.d.deactivate, name, user=name)
                 cur.active = False
+            for g in cur.groups:
+                ex.do("remove-from-group", ex.d.remove_from_group, name, g, user=name, group=g)
+            cur.groups = []
         else:
             raise ValueError(f"CSV line {i}: unknown action {kind!r} for {name}")
     return ex.plan
@@ -445,6 +466,7 @@ def fix(findings, ex):
 def report(directory, days=90, now=None):
     now = now or datetime.now(timezone.utc)
     check_days(days)
+    directory = Snapshot(directory)
     users, groups = directory.users(), directory.groups()
     f = audit(directory, days, now)
     count = lambda t: sum(1 for x in f if x["type"] == t)

@@ -81,8 +81,12 @@ def _read_jml_csv(path, with_lines=False):
             raise _CsvError(f"{path}: line {start}: blank column header")
         if name in seen:
             raise _CsvError(f"{path}: line {start}: duplicate column header {name!r}")
+        if name not in core.JML_COLUMNS:
+            raise _CsvError(
+                f"{path}: line {start}: unknown column {name!r} (expected: {', '.join(core.JML_COLUMNS)})"
+            )
         seen.add(name)
-        cols.append(h)
+        cols.append(name)
     missing = [c for c in core.JML_REQUIRED if c not in cols]
     if missing:
         raise _CsvError(f"{path}: line {start}: header is missing required column(s): {', '.join(missing)}")
@@ -121,6 +125,10 @@ def _confirm(args, n):
         return False
 
 
+def _op_keys(ops):
+    return [(action, fn.__name__, args, details) for action, fn, args, details in ops]
+
+
 def _run_plan(args, d, planner):
     if args.apply and not d.writable:
         print("demo mode never writes; showing the dry-run plan instead.", file=sys.stderr)
@@ -142,6 +150,17 @@ def _run_plan(args, d, planner):
     if not ok:
         print("Aborted, nothing changed.", file=sys.stderr)
         return 2 if ok is REFUSED else 0
+    # Re-plan from a fresh read right before applying: if the directory changed since the
+    # preview the user confirmed, stop without changing anything (no stale plan is applied).
+    recheck = core.Executor(d, apply=False)
+    planner(recheck)
+    if _op_keys(recheck.ops) != _op_keys(preview.ops):
+        print(
+            "error: the directory changed since the preview, so the confirmed plan is out of date. "
+            "Nothing changed; run the command again to review the new plan.",
+            file=sys.stderr,
+        )
+        return 1
     ex = core.Executor(d, apply=True, log_path=args.log)
     try:
         ex.execute(preview.ops)  # exactly the confirmed plan, never re-planned
@@ -259,8 +278,7 @@ def main(argv=None):
                 print(f"error: {_safe(e)}", file=sys.stderr)
                 return 2
         elif args.cmd == "fix":
-            findings = core.audit(d, args.days, now)
-            return _run_plan(args, d, lambda ex: core.fix(findings, ex))
+            return _run_plan(args, d, lambda ex: core.fix(core.audit(d, args.days, now), ex))
     except (CrowdError, ValueError, OSError, requests.RequestException) as e:
         print(f"error: {_safe(auditlog.scrub(e))}", file=sys.stderr)
         return 1
