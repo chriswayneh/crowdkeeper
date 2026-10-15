@@ -1,31 +1,27 @@
 # crowdkeeper
 
-Access hygiene and joiner/mover/leaver (JML) CLI for Atlassian Crowd admins. It talks to
-Crowd's REST API (`/rest/usermanagement/1`) using application authentication.
+Access hygiene and joiner, mover, leaver (JML) CLI for Atlassian Crowd admins: finds inactive and orphaned accounts, tracks group drift, and applies JML changes with an audit log.
+
+[![CI](https://github.com/chriswayneh/crowdkeeper/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chriswayneh/crowdkeeper/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+
+It talks to Crowd's REST API (`/rest/usermanagement/1`) using application authentication. `jml` and `fix` are dry-run by default.
 
 ## Quick start
 
 ```bash
-pip install .            # Python 3.10+
-crowdkeeper --demo audit # try it with the built-in fake directory, no server needed
+git clone https://github.com/chriswayneh/crowdkeeper.git
+cd crowdkeeper
+pip install .
+crowdkeeper --demo audit
 ```
 
-Against a real Crowd server:
+Requires Python 3.10 or newer. `--demo` uses a built-in fake directory, so no Crowd server is needed.
 
-```bash
-export CROWD_URL=https://crowd.example.com/crowd   # https required; no user:pass@ in the URL
-export CROWD_APP=crowdkeeper
-export CROWD_APP_PASSWORD=...   # never logged or written to the audit log
-crowdkeeper audit --days 90
-```
+## Usage
 
-`CROWD_URL` must be `https://`. Plain `http://` is refused for every host, localhost included,
-unless you pass the global `--insecure` flag (e.g. `crowdkeeper --insecure audit` against a local
-test server); that sends the application password unencrypted and prints a warning. URLs with
-embedded credentials are always refused. See [SECURITY.md](SECURITY.md) for supported versions and
-how to report a vulnerability privately.
-
-## Commands
+### Commands
 
 | Command | What it does |
 |---|---|
@@ -77,9 +73,6 @@ no recorded login is reported as `activity-unknown` (review) once the account is
 **Approved plan only:** `--apply` executes exactly the plan you confirmed; it does not re-read Crowd and
 re-plan after the prompt. Prompts and status messages go to stderr, so stdout is just the table/JSON/CSV.
 
-**Demo mode:** `--demo` or `CROWDKEEPER_DEMO=1` uses a built-in directory of 25 users and 8 groups with
-planted problems. Demo mode never writes anything to a directory; `--apply` falls back to a dry run.
-
 JML CSV format (`groups` separated by `;` or spaces; for movers it's the full target set). The
 `action` and `username` columns are required. The whole file is checked before anything is planned:
 unknown groups or malformed rows are reported with line numbers and nothing is changed. Rows run in
@@ -100,7 +93,37 @@ mover,carol,,,-
 leaver,frank,,,
 ```
 
-## Sample output (real demo runs)
+### Demo mode
+
+`--demo` or `CROWDKEEPER_DEMO=1` uses a built-in directory of 25 users and 8 groups with
+planted problems. Demo mode never writes anything to a directory; `--apply` falls back to a dry run.
+
+```bash
+crowdkeeper --demo audit
+crowdkeeper --demo fix
+crowdkeeper --demo jml examples/jml.csv
+crowdkeeper --demo report
+```
+
+### Live mode
+
+```bash
+export CROWD_URL=https://crowd.example.com/crowd   # https required; no user:pass@ in the URL
+export CROWD_APP=crowdkeeper
+export CROWD_APP_PASSWORD=...   # never logged or written to the audit log
+crowdkeeper audit --days 90
+```
+
+`CROWD_URL` must be `https://`. Plain `http://` is refused for every host, localhost included,
+unless you pass the global `--insecure` flag (e.g. `crowdkeeper --insecure audit` against a local
+test server); that sends the application password unencrypted and prints a warning. URLs with
+embedded credentials are always refused. See [SECURITY.md](SECURITY.md) for supported versions and
+how to report a vulnerability privately.
+
+The Crowd client (`crowdkeeper/client.py`) is written directly on `requests` against
+`/rest/usermanagement/1`, because there is no maintained Python Crowd client worth depending on.
+
+### Sample output
 
 ```text
 $ crowdkeeper --demo audit
@@ -155,6 +178,7 @@ Dry run: 8 change(s) planned, nothing written. Use --apply to execute.
 
 ```text
 $ crowdkeeper --demo groups export -f a.json
+Wrote a.json
 $ # (a.json edited: zoe added to jira-admins, carol removed from finance, saved as b.json)
 $ crowdkeeper groups diff a.json b.json
 change   group        user
@@ -215,10 +239,30 @@ Inactivity threshold: 90 days
 _Produced by crowdkeeper. Remediate with `crowdkeeper fix` (dry-run by default)._
 ```
 
-## Why no Crowd client library?
+## Architecture
 
-The Crowd client (`crowdkeeper/client.py`) is written directly on `requests` against
-`/rest/usermanagement/1`, because there is no maintained Python Crowd client worth depending on.
+`cli.py` picks a directory: `DemoDirectory` from `demo.py`, or `CrowdClient` from `client.py`, which calls the Crowd REST API with `requests`. Both return `User` objects from `models.py`. `core.py` runs the audit, group export and diff, JML and fix planning, and the Markdown report. Changes go through the `Executor` in `core.py`, which stays a dry run without `--apply` and writes `intent`, `applied` and `failed` lines through `auditlog.py`.
+
+```mermaid
+flowchart LR
+    user["Shell"] --> cli["cli.py<br/>commands and confirmation"]
+    cli -->|"demo flag"| demo["demo.py<br/>DemoDirectory"]
+    cli -->|"live mode"| client["client.py<br/>CrowdClient on requests"]
+    client --> crowd["Crowd REST API<br/>usermanagement 1"]
+    models["models.py<br/>User"] --> demo
+    models --> client
+    demo --> core["core.py<br/>audit, groups, jml, fix, report"]
+    client --> core
+    jmlcsv["JML CSV file"] --> cli
+    core --> exec["core.py Executor<br/>dry run or apply"]
+    exec --> auditlog["auditlog.py<br/>JSON lines audit log"]
+    exec --> client
+    core --> outp["Table, JSON, CSV or Markdown"]
+```
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md). The latest release is v0.2.0; Phase 0 is done and Phase 1 (harden live mode) is next.
 
 ## Development
 
@@ -229,4 +273,4 @@ pytest
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
