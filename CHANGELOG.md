@@ -3,7 +3,13 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [0.2.2] - Unreleased
+## [0.2.2] - 2026-10-15
+
+### Changed
+- Visible output change: in the plain table, CSV, Markdown report and CLI error messages, invisible
+  characters (tab, newline, ESC, bidi, zero-width and similar) now print as Python-style escapes
+  such as `\t`, `\n`, `\u001b` and `\u202e`, and a literal backslash prints doubled (`\\`).
+  Use `-o json` for exact names. Bad JML input now always exits 2.
 
 ### Fixed
 - `jml` parses the CSV strictly. Duplicate or blank column headers (for example two `groups`

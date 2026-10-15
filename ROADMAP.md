@@ -6,9 +6,9 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 
 | Item | Details |
 | --- | --- |
-| **Latest release** | `v0.2.1` (2026-10-15): up-front JML validation and non-interactive `--apply` refusal; see [CHANGELOG.md](CHANGELOG.md). It did not include the Phase 1 items below. |
-| **Next** | `v0.2.2` patch, then Phase 1: Harden (not started) |
-| **Next target** | `v0.2.2` (patch), then `v0.3.0` (Phase 1) |
+| **Latest release** | `v0.2.2` (2026-10-15): strict JML CSV input and Markdown/terminal-safe output; see [CHANGELOG.md](CHANGELOG.md). It did not include the Phase 1 items below. |
+| **Next** | Phase 1: Harden (not started) |
+| **Next target** | `v0.3.0` (Phase 1) |
 
 ## Phase map
 
@@ -39,9 +39,9 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 
 **Done when:** every command runs in demo mode as documented and CI is green. Landed in commits `dc93a4e` to `5f917b1`, with CI added in `c64fcd8` and after. Not tagged or released.
 
-## Patch: v0.2.2
+## Patch: v0.2.2 (shipped 2026-10-15)
 
-**Goal:** Strict input parsing, safe report rendering, and no Python tracebacks outside apply.
+**Goal:** Strict input parsing and safe report and terminal rendering.
 
 - [x] Strict JML CSV parsing: duplicate or blank headers and broken quoting exit `2` with a line number, nothing changed
 - [x] Strict JML CSV: UTF-8 (optional BOM) required, an empty file or a missing required header rejected
@@ -50,12 +50,12 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 - [x] JML row errors (unknown action or group, missing username, unknown mover/leaver) exit `2` with real file line numbers
 - [x] `report` escapes Markdown link/emphasis characters, HTML and autolinks (URLs, `www.`, fuzzy domains, e-mail) in names, checked with cmark-gfm and markdown-it linkify
 - [x] Terminal-safe output: one `term_safe` helper escapes control, bidi and zero-width characters in the table, CSV, report and error messages
-- [ ] Catch `KeyboardInterrupt` (and unexpected exceptions) outside apply and exit `130` with no traceback
 
 ## Phase 1: Harden (v0.3.0)
 
 **Goal:** Live mode you can point at a large production directory without surprises.
 
+- [ ] Catch `KeyboardInterrupt` (and unexpected exceptions) outside apply and exit `130` with no traceback (moved from v0.2.2)
 - [ ] Retries for 429, 5xx and connection errors with `Retry-After` and capped backoff
 - [ ] Fewer round trips for last-login lookups so big directories scan quickly
 - [ ] Documented exit codes for usage, Crowd and partial apply errors
