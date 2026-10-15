@@ -15,6 +15,12 @@ All notable changes to this project are documented here. This project follows
 - Deactivation sends only the identity fields and `active: false`, not the whole fetched user, and
   refuses to write if Crowd's answer isn't the requested user or lacks any profile field (Crowd's
   `PUT /user` overwrites them, so a missing one is never sent as blank).
+- If the re-plan before apply fails because the directory changed (for example a planned user was
+  deleted), it is reported as drift: exit 1 and nothing changed.
+- Crowd fields that drive decisions are validated: `active` must be true/false (a missing flag no
+  longer reads as active), `display-name` and `email` must be strings, and `lastAuthenticated` and
+  `created-date` must be whole-number millisecond timestamps in range. A 2xx answer that isn't JSON
+  (such as an HTML login page) is an error naming the request. Each exits 1.
 - Users read from Crowd are sorted by name, so the re-check before apply doesn't abort just because
   Crowd returned the same users in a different order.
 - Malformed Crowd responses (missing or non-list `users`/`groups`/`attributes`, entries without a

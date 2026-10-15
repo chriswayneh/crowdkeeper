@@ -51,6 +51,25 @@ def _items(d, key, what):
     return items
 
 
+_MAX_MS = 253402300799999  # 9999-12-31T23:59:59.999Z
+
+
+def _ms(v, what):
+    """A Crowd millisecond timestamp (int, or a decimal string for attribute values) as UTC datetime."""
+    if isinstance(v, str) and v.isascii() and v.isdigit():
+        v = int(v)
+    if type(v) is not int or not 0 <= v <= _MAX_MS:
+        raise CrowdError(f"unexpected Crowd response for {what}: not a valid timestamp")
+    return datetime.fromtimestamp(v / 1000, tz=timezone.utc)
+
+
+def _str(u, key, what):
+    v = u.get(key, "")
+    if not isinstance(v, str):
+        raise CrowdError(f"unexpected Crowd response for {what}: {key!r} is not a string")
+    return v
+
+
 class CrowdClient:
     writable = True
 
@@ -79,7 +98,13 @@ class CrowdClient:
         r = self.s.request(method, self.url + path, timeout=self.timeout, allow_redirects=False, **kw)
         if not 200 <= r.status_code < 300:
             raise CrowdError(f"{method} {path} -> HTTP {r.status_code}", r.status_code)
-        return r.json() if r.content else None
+        if not r.content:
+            return None
+        try:
+            return r.json()
+        except ValueError:  # e.g. an HTML login page served with 200
+            msg = f"unexpected Crowd response for {method} {path}: not JSON"
+            raise CrowdError(msg, r.status_code) from None
 
     def _search(self, entity):
         out, start = [], 0
@@ -101,7 +126,7 @@ class CrowdClient:
             return None  # no attributes recorded: login activity unknown (flagged for review only)
         for a in _items(d, "attributes", f"attributes of {name}"):
             if a.get("name") == "lastAuthenticated" and a.get("values"):
-                return datetime.fromtimestamp(int(a["values"][0]) / 1000, tz=timezone.utc)
+                return _ms(a["values"][0], f"lastAuthenticated of {name}")
         return None
 
     def _direct_groups(self, name, page=1000):
@@ -122,16 +147,19 @@ class CrowdClient:
         res = []
         for u in self._search("user"):
             n = u["name"]
+            what = f"user {n}"
+            if not isinstance(u.get("active"), bool):  # no default: a missing flag must not read as active
+                raise CrowdError(f"unexpected Crowd response for {what}: 'active' is not true/false")
             created = u.get("created-date")
             res.append(
                 User(
                     n,
-                    u.get("display-name", ""),
-                    u.get("email", ""),
-                    u.get("active", True),
+                    _str(u, "display-name", what),
+                    _str(u, "email", what),
+                    u["active"],
                     self._last_login(n),
                     self._direct_groups(n),
-                    None if created is None else datetime.fromtimestamp(int(created) / 1000, tz=timezone.utc),
+                    None if created is None else _ms(created, f"created-date of {n}"),
                 )
             )
         return sorted(res, key=lambda u: u.name)  # stable order: the drift check compares plans

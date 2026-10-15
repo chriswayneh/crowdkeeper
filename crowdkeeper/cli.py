@@ -153,8 +153,12 @@ def _run_plan(args, d, planner):
     # Re-plan from a fresh read right before applying: if the directory changed since the
     # preview the user confirmed, stop without changing anything (no stale plan is applied).
     recheck = core.Executor(d, apply=False)
-    planner(recheck)
-    if _op_keys(recheck.ops) != _op_keys(preview.ops):
+    try:
+        planner(recheck)  # e.g. a planned user was deleted: the plan no longer applies
+        drift = _op_keys(recheck.ops) != _op_keys(preview.ops)
+    except ValueError:  # incl. JmlInputError; Crowd/network errors still exit 1 as such
+        drift = True
+    if drift:
         print(
             "error: the directory changed since the preview, so the confirmed plan is out of date. "
             "Nothing changed; run the command again to review the new plan.",
