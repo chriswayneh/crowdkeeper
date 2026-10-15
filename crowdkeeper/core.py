@@ -1,7 +1,9 @@
 import csv
 import io
 import json
+import re
 import sys
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 
@@ -82,9 +84,43 @@ def csv_safe(v):
     return "'" + v if v.startswith(_FORMULA) else v
 
 
+_ESC = {"\\": "\\\\", "\t": "\\t", "\n": "\\n", "\r": "\\r"}
+
+
+def term_safe(v):
+    """Make text safe to print: backslash, tab, CR, LF and every other control, format (bidi,
+    zero-width) or line/paragraph separator character become Python-style escapes (\\\\, \\t,
+    \\u001b, \\u202e, \\U000e0001), so output can't carry terminal escapes (ESC, OSC 8), reorder
+    text or hide characters. A literal backslash is doubled, so a name that really contains the
+    text "\\u001b" (shown as "\\\\u001b") never looks like a real ESC."""
+    out = []
+    for c in str(v):
+        if c in _ESC:
+            out.append(_ESC[c])
+        elif unicodedata.category(c) in ("Cc", "Cf", "Zl", "Zp"):
+            n = ord(c)
+            out.append(f"\\u{n:04x}" if n <= 0xFFFF else f"\\U{n:08x}")
+        else:
+            out.append(c)
+    return "".join(out)
+
+
 def md_safe(v):
-    """Escape characters that would break Markdown tables/code spans."""
-    return str(v).replace("\\", "\\\\").replace("|", "\\|").replace("`", "'").replace("\n", " ")
+    """Escape Markdown table/link/emphasis/strikethrough characters, autolinks and HTML so names
+    render as plain text under GFM (cmark-gfm autolink extension) and linkify. Every "." is
+    escaped (no fuzzy domains), "://" is broken, and each run of "@" is put in a code span
+    because cmark-gfm still links a backslash-escaped e-mail address."""
+    s = term_safe(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    s = s.replace("\\", "\\\\").replace("`", "'")
+    for ch in "|[]()!*_~.":
+        s = s.replace(ch, "\\" + ch)
+    s = s.replace("://", ":\\/\\/")
+    return re.sub("@+", lambda m: "`" + m.group(0) + "`", s)
+
+
+def md_code_safe(v):
+    """Make text safe inside a Markdown code span, where escapes, HTML and autolinks are literal."""
+    return term_safe(v).replace("`", "'")
 
 
 def fmt(rows, cols, out="table"):
@@ -94,15 +130,14 @@ def fmt(rows, cols, out="table"):
         b = io.StringIO()
         w = csv.DictWriter(b, fieldnames=cols, extrasaction="ignore", lineterminator="\n")
         w.writeheader()
-        w.writerows({c: csv_safe(r.get(c, "")) for c in cols} for r in rows)
+        w.writerows({c: csv_safe(term_safe(r.get(c, ""))) for c in cols} for r in rows)
         return b.getvalue().rstrip("\n")
     if not rows:
         return "(nothing found)"
-    widths = [max(len(c), *(len(str(r.get(c, ""))) for r in rows)) for c in cols]
+    cells = [[term_safe(r.get(c, "")) for c in cols] for r in rows]
+    widths = [max(len(c), *(len(row[i]) for row in cells)) for i, c in enumerate(cols)]
     line = lambda vals: "  ".join(str(v).ljust(w) for v, w in zip(vals, widths, strict=False)).rstrip()
-    return "\n".join(
-        [line(cols), line("-" * w for w in widths)] + [line(r.get(c, "") for c in cols) for r in rows]
-    )
+    return "\n".join([line(cols), line("-" * w for w in widths)] + [line(row) for row in cells])
 
 
 def export_groups(directory):
@@ -205,9 +240,9 @@ class Executor:
         except Exception as le:  # the log itself is broken: never hide the original error
             log_error = self.log_error = le
             print(
-                f"error: {action} failed: {auditlog.safe_error(e)}\n"
-                f"error: could not write the failure to audit log {self.log_path}: "
-                f"{auditlog.safe_error(le)}",
+                f"error: {action} failed: {term_safe(auditlog.safe_error(e))}\n"
+                f"error: could not write the failure to audit log {term_safe(self.log_path)}: "
+                f"{term_safe(auditlog.safe_error(le))}",
                 file=sys.stderr,
             )
         if not isinstance(e, Exception):
@@ -266,7 +301,7 @@ def _is_marker(tok):
 
 
 def _groups_of(r):
-    """None = don't touch groups: column missing, row truncated, or a blank cell (empty,
+    """None = don't touch groups: column missing or a blank cell (empty,
     spaces, or only ';'). [] = the bare marker '-' or 'none': remove every membership.
     Otherwise the listed groups. A blank cell is never read as "remove all"."""
     v = r.get("groups")
@@ -291,17 +326,21 @@ def _groups_error(r):
 JML_ACTIONS = ("joiner", "mover", "leaver")
 
 
-def validate_jml(rows, fieldnames, known_groups, known_users=None):
+class JmlInputError(ValueError):
+    """The JML CSV content is invalid; nothing was planned or changed (CLI exit 2)."""
+
+
+def validate_jml(rows, fieldnames, known_groups, known_users=None, lines=None):
     """Check the whole CSV before any change is planned or made; raise ValueError listing every
     bad line. Checks: required columns, extra values, action, empty username, groups, and (when
     known_users is given) that each mover/leaver exists, counting users created by earlier
-    joiner rows."""
+    joiner rows. lines gives each row's real file line (default: row index + 2)."""
     missing = [c for c in JML_REQUIRED if c not in (fieldnames or [])]
     if missing:
-        raise ValueError(f"CSV header is missing required column(s): {', '.join(missing)}")
+        raise JmlInputError(f"CSV header is missing required column(s): {', '.join(missing)}")
     known, errors = set(known_groups), []
     users = None if known_users is None else set(known_users)
-    for i, r in enumerate(rows, start=2):
+    for i, r in zip(_line_nos(rows, lines), rows, strict=True):
         kind = (r.get("action") or "").strip().lower()
         name = (r.get("username") or "").strip()
         if kind not in JML_ACTIONS:
@@ -321,17 +360,25 @@ def validate_jml(rows, fieldnames, known_groups, known_users=None):
             if g not in known:
                 errors.append(f"line {i}: unknown group {g!r}")
     if errors:
-        raise ValueError("invalid JML CSV, nothing changed:\n  " + "\n  ".join(errors))
+        raise JmlInputError("invalid JML CSV, nothing changed:\n  " + "\n  ".join(errors))
 
 
-def jml(directory, rows, ex, fieldnames=None):
+def _line_nos(rows, lines):
+    if lines is None:
+        return range(2, len(rows) + 2)
+    if len(lines) != len(rows):
+        raise ValueError("lines must have one entry per row")
+    return lines
+
+
+def jml(directory, rows, ex, fieldnames=None, lines=None):
     """Rows are applied in order against a projected state, so several rows for one user
     (e.g. mover then mover back, or joiner twice) see the effect of the earlier rows."""
     if fieldnames is None:
         fieldnames = list(rows[0].keys()) if rows else list(JML_REQUIRED)
     users = {u.name: u for u in directory.users()}
-    validate_jml(rows, fieldnames, directory.groups(), users)  # before ANY ex.do()
-    for i, r in enumerate(rows, start=2):
+    validate_jml(rows, fieldnames, directory.groups(), users, lines)  # before ANY ex.do()
+    for i, r in zip(_line_nos(rows, lines), rows, strict=True):
         kind = (r.get("action") or "").strip().lower()
         name = (r.get("username") or "").strip()
         if not name:
@@ -424,7 +471,7 @@ def report(directory, days=90, now=None):
         "",
     ]
     lines += [
-        f"- **{x['type']}** `{md_safe(x['subject'])}`: {md_safe(x['detail'])} (recommended: {x['fix']})"
+        f"- **{x['type']}** `{md_code_safe(x['subject'])}`: {md_safe(x['detail'])} (recommended: {x['fix']})"
         for x in f
     ] or ["No findings."]
     lines += ["", "## Group sizes", "", "| Group | Members |", "|---|---|"]

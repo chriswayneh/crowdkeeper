@@ -58,7 +58,7 @@ def test_cli_valid_leaver_then_bad_row_changes_nothing(bad, tmp_path, monkeypatc
         f"{bad['action']},{bad['username']},{bad['groups']}\n"
     )
     log = tmp_path / "audit.json"
-    assert main(["jml", str(p), "--apply", "-y", "--log", str(log)]) == 1
+    assert main(["jml", str(p), "--apply", "-y", "--log", str(log)]) == 2  # input error
     assert "line 3" in capsys.readouterr().err
     assert d.calls == [] and not log.exists()
 
@@ -95,10 +95,10 @@ def test_cli_non_tty_without_y_aborts_nothing_changed(tmp_path, monkeypatch, cap
     assert d.calls == [] and not log.exists()
 
 
-def test_version_is_0_2_1():
+def test_version_is_0_2_1_or_later():
     import crowdkeeper
 
-    assert crowdkeeper.__version__ == "0.2.1"
+    assert tuple(int(x) for x in crowdkeeper.__version__.split(".")) >= (0, 2, 1)
     assert json.dumps(crowdkeeper.__version__)
 
 

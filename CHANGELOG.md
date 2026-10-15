@@ -3,6 +3,42 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - Unreleased
+
+### Fixed
+- `jml` parses the CSV strictly. Duplicate or blank column headers (for example two `groups`
+  columns, which could plan removal of all of a user's groups) and broken quoting (an unclosed
+  quote, or text after a closing quote, which could still plan a removal or deactivation) are now
+  rejected with a line-numbered error, exit 2 (the usage-error code), and nothing is planned or
+  changed.
+- The Markdown `report` escapes `[ ] ( ) ! *` and HTML (`&`, `<`, `>`) in user and group names,
+  so a name can't render as a link, image, emphasis or HTML. Finding subjects shown in code
+  spans are left unescaped apart from backticks and newlines, since Markdown and HTML aren't
+  interpreted there.
+- `jml` reads the CSV as UTF-8 with an optional BOM. These also stop the run with a line-numbered
+  error and exit 2, before anything is planned: an empty file (no header), a missing required
+  header (`action`, `username`; was exit 1), a row with more or fewer values than the header
+  (short rows were previously accepted), bytes that aren't UTF-8, and any control, format or
+  separator character in a field (NUL, tab, ESC, C1, U+202E, U+200B, U+2028, line breaks inside
+  quotes).
+- The Markdown `report` also escapes `_` and `~` and breaks autolinks (`://`, `www.`, `@`), and in
+  both escaped text and code spans it shows control, bidi, zero-width and line/paragraph separator
+  characters as visible escapes (`\u001b`), so report output can't inject terminal escapes (ESC, OSC 8)
+  or reorder text.
+- Row validation errors in `jml` (unknown action or group, missing username, a mover or leaver who
+  doesn't exist) now exit 2 like other input errors (was 1), and their line numbers are the real
+  file lines, so blank lines no longer shift them. Through the Python API they raise
+  `core.JmlInputError`, a `ValueError` subclass; `core.jml()` takes an optional `lines` list.
+- The plain table and CSV outputs and CLI error messages show control, bidi, zero-width and
+  separator characters as visible escapes (shared `core.term_safe` helper). JSON is unchanged: it
+  already writes them as `\uXXXX` escapes and keeps the exact value.
+- `term_safe` writes those characters as Python-style escapes (`\u001b`, `\t`, `\n`) and doubles a
+  literal backslash, so a name containing the text `U+001B` or `\u001b` can't be mistaken for a
+  real control character.
+- The Markdown `report` escapes every `.` and puts each run of `@` in a code span, so bare domains
+  (`evil.com`, `xn--...`), `//host` paths and e-mail or `mailto:` addresses no longer autolink in
+  cmark-gfm (GitHub) or markdown-it linkify.
+
 ## [0.2.1] - 2026-10-15
 
 ### Fixed
