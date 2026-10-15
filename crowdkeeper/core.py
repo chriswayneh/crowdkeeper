@@ -91,6 +91,11 @@ def md_safe(v):
     return s
 
 
+def md_code_safe(v):
+    """Make text safe inside a Markdown code span, where escapes and HTML are literal."""
+    return str(v).replace("`", "'").replace("\r", " ").replace("\n", " ")
+
+
 def fmt(rows, cols, out="table"):
     if out == "json":
         return json.dumps(rows, indent=2, default=str)
@@ -428,7 +433,7 @@ def report(directory, days=90, now=None):
         "",
     ]
     lines += [
-        f"- **{x['type']}** `{md_safe(x['subject'])}`: {md_safe(x['detail'])} (recommended: {x['fix']})"
+        f"- **{x['type']}** `{md_code_safe(x['subject'])}`: {md_safe(x['detail'])} (recommended: {x['fix']})"
         for x in f
     ] or ["No findings."]
     lines += ["", "## Group sizes", "", "| Group | Members |", "|---|---|"]

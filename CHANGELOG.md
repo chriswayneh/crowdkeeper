@@ -12,7 +12,9 @@ All notable changes to this project are documented here. This project follows
   rejected with a line-numbered error, exit 2 (the usage-error code), and nothing is planned or
   changed.
 - The Markdown `report` escapes `[ ] ( ) ! *` and HTML (`&`, `<`, `>`) in user and group names,
-  so a name can't render as a link, image, emphasis or HTML.
+  so a name can't render as a link, image, emphasis or HTML. Finding subjects shown in code
+  spans are left unescaped apart from backticks and newlines, since Markdown and HTML aren't
+  interpreted there.
 
 ## [0.2.1] - 2026-10-15
 

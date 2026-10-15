@@ -90,3 +90,40 @@ def test_version_is_0_2_2():
     import crowdkeeper
 
     assert crowdkeeper.__version__ == "0.2.2"
+
+
+VALID_CSVS = [
+    "\ufeffaction,username,groups\nleaver,frank,\n",
+    'action,username,groups\r\nmover,alice,"jira-users,confluence-users"\r\n',
+    " action , username ,groups\nmover,alice,a;b\n\nleaver,frank\nmover,bob,x,extra\n",
+    'action,username,groups\nmover,alice,"say ""hi"""\n',
+]
+
+
+@pytest.mark.parametrize("text", VALID_CSVS)
+def test_strict_reader_matches_dictreader_for_valid_files(text, tmp_path):
+    import csv
+
+    p = tmp_path / "jml.csv"
+    p.write_bytes(text.encode("utf-8"))
+    with open(p, newline="") as f:
+        r = csv.DictReader(f)
+        expected = (list(r), r.fieldnames)
+    assert cli._read_jml_csv(p) == expected
+
+
+def test_version_compares_numerically():
+    import crowdkeeper
+
+    def as_tuple(v):
+        return tuple(int(x) for x in v.split("."))
+
+    assert as_tuple(crowdkeeper.__version__) >= (0, 2, 1)
+    assert as_tuple("0.10.0") > as_tuple("0.2.1")
+
+
+def test_report_code_span_subject_not_backslash_or_entity_escaped():
+    out = core.md_code_safe("a[b](c)*!&<x>|`y\nz")
+    assert "\\" not in out and "&amp;" not in out and "&lt;" not in out
+    assert "`" not in out and "\n" not in out
+    assert out == "a[b](c)*!&<x>|'y z"
