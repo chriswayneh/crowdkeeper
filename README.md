@@ -188,6 +188,7 @@ Dry run: 8 change(s) planned, nothing written. Use --apply to execute.
 
 ```text
 $ crowdkeeper --demo groups export -f a.json
+Wrote a.json
 $ # (a.json edited: zoe added to jira-admins, carol removed from finance, saved as b.json)
 $ crowdkeeper groups diff a.json b.json
 change   group        user
@@ -262,7 +263,7 @@ flowchart LR
     models --> client
     demo --> core["core.py<br/>audit, groups, jml, fix, report"]
     client --> core
-    jmlcsv["JML CSV file"] --> core
+    jmlcsv["JML CSV file"] --> cli
     core --> exec["core.py Executor<br/>dry run or apply"]
     exec --> auditlog["auditlog.py<br/>JSON lines audit log"]
     exec --> client
@@ -276,7 +277,7 @@ The Crowd client (`crowdkeeper/client.py`) is written directly on `requests` aga
 
 ## Roadmap
 
-There is no ROADMAP.md yet.
+See [ROADMAP.md](ROADMAP.md). The latest release is v0.2.0; Phase 0 is done and Phase 1 (harden live mode) is next.
 
 ## Development
 
