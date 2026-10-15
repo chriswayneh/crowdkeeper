@@ -1,0 +1,4 @@
+action,username,display_name,email,groups
+joiner,newhire,New Hire,newhire@example.com,jira-users;confluence-users
+mover,bob,,,jira-users;confluence-users
+leaver,frank,,,
