@@ -38,6 +38,14 @@ passed, the prompt refuses, nothing is changed, and the command exits with statu
 see a failure. Declining at an interactive prompt still exits 0. Every applied change is appended to the audit log (`--log`, default
 `crowdkeeper-audit.json`) as JSON lines. Password fields are never logged.
 
+**Exit codes:**
+
+| Code | Meaning |
+|---|---|
+| 0 | Success, a dry run, nothing to do, or declined at the interactive prompt |
+| 1 | Invalid input, a Crowd, network or file error, or a partial apply (including Ctrl-C during `--apply`) |
+| 2 | A usage error (bad arguments, from argparse), or `--apply` on non-TTY stdin without `-y` |
+
 **Audit log format:** each change writes two lines. An `intent` line is written *before* the change
 is sent to Crowd, and an `applied` line after it succeeds, so even a Ctrl-C or kill mid-change leaves
 a record. An `intent` with no matching `applied` or `failed` line (same `run_id` and `seq`) means the

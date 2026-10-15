@@ -157,3 +157,20 @@ def test_cli_fix_non_tty_without_y_exits_2(monkeypatch, capsys):
     assert main(["fix", "--apply"]) == 2
     assert "Aborted, nothing changed." in capsys.readouterr().err
     assert d.calls == []
+
+
+def test_cli_apply_empty_plan_nothing_to_do_never_prompts(tmp_path, monkeypatch, capsys):
+    """--apply with an empty plan exits 0 with 'Nothing to do.' and never reaches _confirm."""
+    from unittest import mock
+
+    d = FakeWritable()
+    monkeypatch.setattr(cli, "_dir", lambda a: (d, None))
+    confirm = mock.Mock(side_effect=AssertionError("_confirm must not be called"))
+    monkeypatch.setattr(cli, "_confirm", confirm)
+    p = tmp_path / "jml.csv"
+    p.write_text("action,username,groups\n")
+    log = tmp_path / "audit.json"
+    assert main(["jml", str(p), "--apply", "--log", str(log)]) == 0
+    assert "Nothing to do." in capsys.readouterr().err
+    confirm.assert_not_called()
+    assert d.calls == [] and not log.exists()
