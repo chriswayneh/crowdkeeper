@@ -6,8 +6,8 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 
 | Item | Details |
 | --- | --- |
-| **Latest release** | `v0.2.2` (2026-10-15): strict JML CSV input and Markdown/terminal-safe output; see [CHANGELOG.md](CHANGELOG.md). It did not include the Phase 1 items below. |
-| **Next** | `v0.2.3` patch (in progress), then Phase 1: Harden |
+| **Latest release** | `v0.2.3` (2026-10-15): live-mode safety fixes from a verified Codex review (leaver order, no redirects, drift re-check, strict Crowd validation); see [CHANGELOG.md](CHANGELOG.md). It did not include the Phase 1 items below. |
+| **Next** | Phase 1: Harden |
 | **Next target** | `v0.3.0` (Phase 1) |
 
 ## Phase map
@@ -39,7 +39,7 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 
 **Done when:** every command runs in demo mode as documented and CI is green. Landed in commits `dc93a4e` to `5f917b1`, with CI added in `c64fcd8` and after. Not tagged or released.
 
-## Patch: v0.2.3 (in progress)
+## Patch: v0.2.3 (shipped 2026-10-15)
 
 **Goal:** Fix verified Codex review findings in live-mode safety.
 
@@ -47,6 +47,7 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 - [x] Client: no redirects, only 2xx is success; malformed responses are errors
 - [x] Re-plan before apply and abort on drift; minimal deactivate body
 - [x] JML header names stripped, unknown columns rejected; `report` uses one snapshot
+- [x] Crowd decision fields validated (`active`, names, timestamps); non-JSON 2xx is an error
 - [x] README: membership is direct-only
 
 ## Patch: v0.2.2 (shipped 2026-10-15)

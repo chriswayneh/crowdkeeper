@@ -156,6 +156,8 @@ def _run_plan(args, d, planner):
     try:
         planner(recheck)  # e.g. a planned user was deleted: the plan no longer applies
         drift = _op_keys(recheck.ops) != _op_keys(preview.ops)
+    except CrowdError:  # a Crowd error is reported as one (exit 1 via main), never as drift
+        raise
     except ValueError:  # incl. JmlInputError; Crowd/network errors still exit 1 as such
         drift = True
     if drift:

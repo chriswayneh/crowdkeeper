@@ -3,7 +3,17 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [0.2.3] - Unreleased
+## [0.2.3] - 2026-10-15
+
+### Changed
+- Visible behaviour changes:
+  - Leavers: `jml` plans `deactivate-user` before the `remove-from-group` steps. If deactivation
+    fails, the run stops with exit 1 and no group is removed.
+  - Exit codes: a redirect, any non-2xx or non-JSON answer, a malformed Crowd response, and the
+    directory changing between the confirmed preview and the apply all exit 1 (nothing is applied
+    on drift). An unknown JML column now exits 2.
+  - Stricter Crowd validation: a user without a true/false `active` flag, a non-string name field
+    or an out-of-range timestamp is now an error (exit 1) instead of being read with a default.
 
 ### Fixed
 - `jml` leavers are now deactivated before their group memberships are removed, so a failed removal
@@ -19,7 +29,9 @@ All notable changes to this project are documented here. This project follows
   deleted), it is reported as drift: exit 1 and nothing changed.
 - Crowd fields that drive decisions are validated: `active` must be true/false (a missing flag no
   longer reads as active), `display-name` and `email` must be strings, and `lastAuthenticated` and
-  `created-date` must be whole-number millisecond timestamps in range. A 2xx answer that isn't JSON
+  `created-date` must be whole-number millisecond timestamps in range (`lastAuthenticated` needs a
+  non-empty `values` list; oversized digit strings are rejected before parsing). A Crowd error during
+  the re-check is reported as a Crowd error, not as drift. A 2xx answer that isn't JSON
   (such as an HTML login page) is an error naming the request. Each exits 1.
 - Users read from Crowd are sorted by name, so the re-check before apply doesn't abort just because
   Crowd returned the same users in a different order.

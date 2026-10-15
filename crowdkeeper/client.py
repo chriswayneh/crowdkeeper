@@ -56,8 +56,8 @@ _MAX_MS = 253402300799999  # 9999-12-31T23:59:59.999Z
 
 def _ms(v, what):
     """A Crowd millisecond timestamp (int, or a decimal string for attribute values) as UTC datetime."""
-    if isinstance(v, str) and v.isascii() and v.isdigit():
-        v = int(v)
+    if isinstance(v, str) and v.isascii() and v.isdigit() and len(v) <= len(str(_MAX_MS)):
+        v = int(v)  # capped first: int() on a huge digit string is slow and can raise ValueError
     if type(v) is not int or not 0 <= v <= _MAX_MS:
         raise CrowdError(f"unexpected Crowd response for {what}: not a valid timestamp")
     return datetime.fromtimestamp(v / 1000, tz=timezone.utc)
@@ -125,8 +125,13 @@ class CrowdClient:
         if d is None or (isinstance(d, dict) and "attributes" not in d):
             return None  # no attributes recorded: login activity unknown (flagged for review only)
         for a in _items(d, "attributes", f"attributes of {name}"):
-            if a.get("name") == "lastAuthenticated" and a.get("values"):
-                return _ms(a["values"][0], f"lastAuthenticated of {name}")
+            if a.get("name") == "lastAuthenticated":
+                vals = a.get("values")
+                if not isinstance(vals, list) or not vals:
+                    raise CrowdError(
+                        f"unexpected Crowd response for lastAuthenticated of {name}: no values list"
+                    )
+                return _ms(vals[0], f"lastAuthenticated of {name}")
         return None
 
     def _direct_groups(self, name, page=1000):
