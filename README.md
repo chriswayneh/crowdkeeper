@@ -52,7 +52,7 @@ and during the apply itself is not detected.
 | Code | Meaning |
 |---|---|
 | 0 | Success, a dry run, nothing to do, or declined at the interactive prompt |
-| 1 | A Crowd, network or file error, an invalid `groups diff` snapshot, or a partial apply (including Ctrl-C during `--apply`) |
+| 1 | A Crowd, network or file error (including a redirect, a non-2xx answer or a malformed response), an invalid `groups diff` snapshot, the directory changing between the confirmed preview and the apply (nothing changed), or a partial apply (including Ctrl-C during `--apply`) |
 | 2 | A usage error (bad arguments, from argparse), a malformed JML CSV (empty file with no header, a duplicate, blank or missing required header, broken quoting, a row with more or fewer values than the header, text that isn't UTF-8, or a control or invisible character such as NUL, tab, ESC, U+202E or U+200B in any field), an invalid JML row (unknown action or group, missing username, a mover or leaver who doesn't exist), or `--apply` on non-TTY stdin without `-y` |
 
 **Audit log format:** each change writes two lines. An `intent` line is written *before* the change
