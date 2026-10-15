@@ -19,19 +19,6 @@ crowdkeeper --demo audit
 
 Requires Python 3.10 or newer. `--demo` uses a built-in fake directory, so no Crowd server is needed.
 
-```bash
-export CROWD_URL=https://crowd.example.com/crowd   # https required; no user:pass@ in the URL
-export CROWD_APP=crowdkeeper
-export CROWD_APP_PASSWORD=...   # never logged or written to the audit log
-crowdkeeper audit --days 90
-```
-
-`CROWD_URL` must be `https://`. Plain `http://` is refused for every host, localhost included,
-unless you pass the global `--insecure` flag (e.g. `crowdkeeper --insecure audit` against a local
-test server); that sends the application password unencrypted and prints a warning. URLs with
-embedded credentials are always refused. See [SECURITY.md](SECURITY.md) for supported versions and
-how to report a vulnerability privately.
-
 ## Usage
 
 ### Commands
@@ -86,9 +73,6 @@ no recorded login is reported as `activity-unknown` (review) once the account is
 **Approved plan only:** `--apply` executes exactly the plan you confirmed; it does not re-read Crowd and
 re-plan after the prompt. Prompts and status messages go to stderr, so stdout is just the table/JSON/CSV.
 
-**Demo mode:** `--demo` or `CROWDKEEPER_DEMO=1` uses a built-in directory of 25 users and 8 groups with
-planted problems. Demo mode never writes anything to a directory; `--apply` falls back to a dry run.
-
 JML CSV format (`groups` separated by `;` or spaces; for movers it's the full target set). The
 `action` and `username` columns are required. The whole file is checked before anything is planned:
 unknown groups or malformed rows are reported with line numbers and nothing is changed. Rows run in
@@ -124,11 +108,17 @@ crowdkeeper --demo report
 ### Live mode
 
 ```bash
-export CROWD_URL=https://crowd.example.com/crowd
+export CROWD_URL=https://crowd.example.com/crowd   # https required; no user:pass@ in the URL
 export CROWD_APP=crowdkeeper
 export CROWD_APP_PASSWORD=...   # never logged or written to the audit log
 crowdkeeper audit --days 90
 ```
+
+`CROWD_URL` must be `https://`. Plain `http://` is refused for every host, localhost included,
+unless you pass the global `--insecure` flag (e.g. `crowdkeeper --insecure audit` against a local
+test server); that sends the application password unencrypted and prints a warning. URLs with
+embedded credentials are always refused. See [SECURITY.md](SECURITY.md) for supported versions and
+how to report a vulnerability privately.
 
 The Crowd client (`crowdkeeper/client.py`) is written directly on `requests` against
 `/rest/usermanagement/1`, because there is no maintained Python Crowd client worth depending on.
@@ -269,11 +259,6 @@ flowchart LR
     exec --> client
     core --> outp["Table, JSON, CSV or Markdown"]
 ```
-
-## Why no Crowd client library?
-
-The Crowd client (`crowdkeeper/client.py`) is written directly on `requests` against
-`/rest/usermanagement/1`, because there is no maintained Python Crowd client worth depending on.
 
 ## Roadmap
 
