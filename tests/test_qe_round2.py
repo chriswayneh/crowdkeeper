@@ -334,3 +334,69 @@ def test_item2_short_password_masked_next_to_punctuation(monkeypatch):
     for raw in ("password pw1.", "pw1-rejected", "x=_pw1_", "'pw1'", "(pw1)"):
         assert "pw1" not in auditlog.scrub(raw), raw
     assert auditlog.scrub("pw12 apw1") == "pw12 apw1"  # different alphanumeric tokens
+
+
+# ---- quoted literal group names 'none' / '-' -----------------------------------------------
+
+
+@pytest.fixture
+def odd_groups(monkeypatch):
+    from crowdkeeper import demo
+
+    monkeypatch.setattr(demo, "GROUPS", sorted(set(demo.GROUPS) | {"none", "-"}))
+
+
+def _mover_plan(cell):
+    d = DemoDirectory()
+    rows = [{"action": "mover", "username": "bob", "groups": cell}]
+    return sorted(
+        (p["action"], p["group"])
+        for p in core.jml(d, rows, core.Executor(d), ["action", "username", "groups"])
+    )
+
+
+@pytest.mark.parametrize("name", ["none", "-"])
+def test_quoted_marker_is_a_literal_group_name(odd_groups, name):
+    assert _mover_plan(f"'{name}'") == [
+        ("add-to-group", name),
+        ("remove-from-group", "bitbucket-users"),
+        ("remove-from-group", "jira-users"),
+    ]
+
+
+def test_quoted_names_mixed_with_other_groups(odd_groups):
+    assert _mover_plan("jira-users;'none' '-'") == [
+        ("add-to-group", "-"),
+        ("add-to-group", "none"),
+        ("remove-from-group", "bitbucket-users"),
+    ]
+
+
+def test_bare_marker_still_removes_all_even_with_odd_groups(odd_groups):
+    assert (
+        _mover_plan("none")
+        == _mover_plan("-")
+        == [
+            ("remove-from-group", "bitbucket-users"),
+            ("remove-from-group", "jira-users"),
+        ]
+    )
+
+
+def test_quoted_unknown_group_is_a_line_error():
+    d = DemoDirectory()
+    rows = [{"action": "mover", "username": "bob", "groups": "'none'"}]
+    with pytest.raises(ValueError, match=r"line 2: unknown group 'none'"):
+        core.jml(d, rows, core.Executor(d), ["action", "username", "groups"])
+
+
+def test_cli_quoted_literal_group_mixed(odd_groups, tmp_path, capsys):
+    p = tmp_path / "j.csv"
+    p.write_text("action,username,display_name,email,groups\nmover,bob,,,jira-users;'-';'none'\n")
+    assert main(["--demo", "jml", str(p), "-o", "json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert sorted((x["action"], x["group"]) for x in out) == [
+        ("add-to-group", "-"),
+        ("add-to-group", "none"),
+        ("remove-from-group", "bitbucket-users"),
+    ]

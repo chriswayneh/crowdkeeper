@@ -20,7 +20,8 @@ All notable changes to this project are documented here. This project follows
   `--insecure` flag, which logs a warning.
 - **Breaking:** `jml` movers: a blank `groups` cell (empty, spaces, or only `;`) now leaves
   memberships alone. Removing every group requires the explicit marker `-` or `none`; mixing it
-  with group names is rejected with the line number.
+  with group names is rejected with the line number. A single-quoted token (`'none'`, `'-'`) is a
+  literal group name, so real groups with those names can still be listed alongside others.
 - Requires `requests>=2.32.4` (CVE-2024-35195 was fixed in 2.32.0, CVE-2024-47081 in 2.32.4).
 - Error text masks an app password of 8+ characters anywhere, and a shorter one only where no letter
   or digit touches it, so short passwords no longer mangle unrelated words.

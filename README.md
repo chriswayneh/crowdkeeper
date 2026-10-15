@@ -86,7 +86,9 @@ unknown groups or malformed rows are reported with line numbers and nothing is c
 order, so several rows for one user build on each other. For a mover, a missing `groups` column,
 a truncated row, or a blank cell (empty, only spaces, or only `;`) leaves memberships alone; it is
 never read as "remove all". To remove every group, write the explicit marker `-` or `none`
-(case-insensitive). Combining `-`/`none` with group names is a validation error with the line number:
+(case-insensitive, unquoted). To name a real group literally called `none` or `-`, wrap it in
+single quotes inside the cell, e.g. `jira-users;'none';'-'`; any single-quoted token is taken as a
+literal group name, never as the marker. Combining `-`/`none` with group names is a validation error with the line number:
 
 ```csv
 action,username,display_name,email,groups

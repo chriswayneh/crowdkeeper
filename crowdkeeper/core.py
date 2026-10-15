@@ -248,25 +248,42 @@ JML_REQUIRED = ("action", "username")
 NO_GROUPS = {"-", "none"}
 
 
+def _tokens(v):
+    """Split a groups cell into (name, quoted) pairs. A token wrapped in single quotes, e.g.
+    'none' or '-', is a literal group name and never the remove-all marker."""
+    out = []
+    for g in (v or "").replace(";", " ").split():
+        if len(g) >= 3 and g[0] == g[-1] == "'":
+            out.append((g[1:-1], True))
+        else:
+            out.append((g, False))
+    return out
+
+
+def _is_marker(tok):
+    name, quoted = tok
+    return not quoted and name.lower() in NO_GROUPS
+
+
 def _groups_of(r):
     """None = don't touch groups: column missing, row truncated, or a blank cell (empty,
-    spaces, or only ';'). [] = the explicit marker '-' or 'none': remove every membership.
+    spaces, or only ';'). [] = the bare marker '-' or 'none': remove every membership.
     Otherwise the listed groups. A blank cell is never read as "remove all"."""
     v = r.get("groups")
     if v is None:
         return None
-    items = [g for g in v.replace(";", " ").split() if g]
-    if not items:
+    toks = _tokens(v)
+    if not toks:
         return None
-    if any(g.lower() in NO_GROUPS for g in items):
+    if any(_is_marker(t) for t in toks):
         return []
-    return items
+    return [name for name, _ in toks]
 
 
 def _groups_error(r):
     v = r.get("groups") or ""
-    items = [g for g in v.replace(";", " ").split() if g]
-    if len(items) > 1 and any(g.lower() in NO_GROUPS for g in items):
+    toks = _tokens(v)
+    if len(toks) > 1 and any(_is_marker(t) for t in toks):
         return f"'-'/'none' (remove all groups) cannot be combined with groups: {v.strip()!r}"
     return None
 
