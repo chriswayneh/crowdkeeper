@@ -433,3 +433,42 @@ def test_change_failure_stage_not_applied(tmp_path):
         ex.do("deactivate-user", d.deactivate, "bob", user="bob")
     fail = _entries(log)[-1]
     assert fail["stage"] == "change" and fail["change_applied"] is False
+
+
+def test_interrupt_during_crowd_call_logs_change_applied_unknown(tmp_path):
+    class Interrupting(FakeWritable):
+        def deactivate(self, u):
+            raise KeyboardInterrupt
+    d = Interrupting()
+    log = tmp_path / "audit.json"
+    ex = core.Executor(d, apply=True, log_path=str(log))
+    with pytest.raises(KeyboardInterrupt):
+        core.fix(core.audit(d, 90, NOW), ex)
+    failed = _entries(log)[-1]
+    assert failed["event"] == "failed" and failed["stage"] == "change"
+    assert failed["change_applied"] is None
+
+
+def test_ordinary_crowd_error_logs_change_applied_false(tmp_path):
+    class Broken(FakeWritable):
+        def deactivate(self, u):
+            raise RuntimeError("boom")
+    d = Broken()
+    log = tmp_path / "audit.json"
+    ex = core.Executor(d, apply=True, log_path=str(log))
+    with pytest.raises(core.PartialFailure):
+        core.fix(core.audit(d, 90, NOW), ex)
+    assert _entries(log)[-1]["change_applied"] is False
+
+
+@pytest.mark.parametrize("name", ["ts"])
+def test_record_rejects_reserved_field_names(tmp_path, name):
+    log = tmp_path / "audit.json"
+    with pytest.raises(ValueError, match="reserved"):
+        auditlog.record(str(log), "applied", "x", {}, **{name: "forged"})
+    assert not log.exists()
+
+
+def test_version_is_0_2_0():
+    import crowdkeeper
+    assert crowdkeeper.__version__ == "0.2.0"

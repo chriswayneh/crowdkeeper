@@ -41,7 +41,9 @@ outcome is unknown; check that change in Crowd. The change's own fields sit unde
 they can never overwrite the top-level fields. `seq` restarts at 1 each run; `run_id` is a random
 per-run id, so `(run_id, seq)` identifies a change across runs appended to the same log. A `failed`
 entry's `stage` is `intent_log` (change not attempted), `change` (the Crowd call failed) or
-`applied_log` (the change *was* made, `change_applied: true`, but its `applied` line failed);
+`applied_log` (the change *was* made, `change_applied: true`, but its `applied` line failed).
+`change_applied` is `false` when the change was not made, and `null` (unknown) when a Ctrl-C or other
+interrupt hit during the Crowd call, since Crowd may already have applied it; check that change in Crowd.
 `applied_before_failure` counts every change made in the run, including that one. This format
 replaces the single-line-per-change format of earlier versions; update any log readers.
 

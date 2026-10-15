@@ -116,11 +116,19 @@ class Executor:
     def _fail(self, action, details, e, seq, stage):
         # stage: intent_log (change not attempted), change (call failed),
         # applied_log (the change WAS made; only its "applied" line failed to write).
+        # change_applied: True for applied_log, None (unknown) when an interrupt hit during the
+        # Crowd call (Crowd may already have made the change), otherwise False.
         # applied_before_failure counts every change made so far, incl. this one if change_applied.
         log_error = None
+        if stage == "applied_log":
+            applied = True
+        elif stage == "change" and not isinstance(e, Exception):
+            applied = None  # interrupted mid-call: outcome in Crowd is unknown
+        else:
+            applied = False
         try:
             auditlog.record(self.log_path, "failed", action, details, seq=seq, run_id=self.run_id,
-                            stage=stage, change_applied=stage == "applied_log",
+                            stage=stage, change_applied=applied,
                             error=auditlog.safe_error(e), applied_before_failure=self.applied)
         except Exception as le:  # the log itself is broken: never hide the original error
             log_error = self.log_error = le
