@@ -13,17 +13,23 @@ crowdkeeper --demo audit # try it with the built-in fake directory, no server ne
 Against a real Crowd server:
 
 ```bash
-export CROWD_URL=https://crowd.example.com/crowd
+export CROWD_URL=https://crowd.example.com/crowd   # https required; no user:pass@ in the URL
 export CROWD_APP=crowdkeeper
 export CROWD_APP_PASSWORD=...   # never logged or written to the audit log
 crowdkeeper audit --days 90
 ```
 
+`CROWD_URL` must be `https://`. Plain `http://` is refused for every host, localhost included,
+unless you pass the global `--insecure` flag (e.g. `crowdkeeper --insecure audit` against a local
+test server); that sends the application password unencrypted and prints a warning. URLs with
+embedded credentials are always refused. See [SECURITY.md](SECURITY.md) for supported versions and
+how to report a vulnerability privately.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `audit [--days N] [-o table\|json\|csv]` | Inactive users (no login in N days), active users with no groups, disabled users still in groups, empty groups |
+| `audit [--days N] [-o table\|json\|csv]` | Inactive users (last login N+ days ago), users with no recorded login (flagged for review, never auto-deactivated), active users with no groups, disabled users still in groups, empty groups |
 | `groups export [-f FILE]` | Dump group membership as JSON |
 | `groups diff A B` | Show access drift (granted/revoked/group added/removed) between two exports |
 | `jml FILE.csv [--apply]` | Joiners (create + add groups), movers (set groups), leavers (strip groups + deactivate) |
@@ -41,7 +47,10 @@ outcome is unknown; check that change in Crowd. The change's own fields sit unde
 they can never overwrite the top-level fields. `seq` restarts at 1 each run; `run_id` is a random
 per-run id, so `(run_id, seq)` identifies a change across runs appended to the same log. A `failed`
 entry's `stage` is `intent_log` (change not attempted), `change` (the Crowd call failed) or
-`applied_log` (the change *was* made, `change_applied: true`, but its `applied` line failed);
+`applied_log` (the change *was* made, `change_applied: true`, but its `applied` line failed).
+`change_applied` is `false` only when the change provably was not made (its `intent` line could not be
+written, or Crowd rejected it with an HTTP 4xx). Otherwise it is `null` (unknown): a Ctrl-C, timeout,
+lost connection or 5xx may come after Crowd already applied it, so check that change in Crowd.
 `applied_before_failure` counts every change made in the run, including that one. This format
 replaces the single-line-per-change format of earlier versions; update any log readers.
 
@@ -49,7 +58,7 @@ replaces the single-line-per-change format of earlier versions; update any log r
 {"ts": "2026-10-15T02:10:01+00:00", "event": "intent", "action": "deactivate-user", "seq": 1, "run_id": "9f2c...", "detail": {"user": "frank", "reason": "last login 140d ago"}}
 {"ts": "2026-10-15T02:10:01+00:00", "event": "applied", "action": "deactivate-user", "seq": 1, "run_id": "9f2c...", "detail": {"user": "frank", "reason": "last login 140d ago"}}
 {"ts": "2026-10-15T02:10:02+00:00", "event": "intent", "action": "remove-from-group", "seq": 2, "run_id": "9f2c...", "detail": {"user": "ivan", "group": "jira-users"}}
-{"ts": "2026-10-15T02:10:02+00:00", "event": "failed", "action": "remove-from-group", "seq": 2, "run_id": "9f2c...", "stage": "change", "change_applied": false, "error": "RuntimeError: ...", "applied_before_failure": 1, "detail": {"user": "ivan", "group": "jira-users"}}
+{"ts": "2026-10-15T02:10:02+00:00", "event": "failed", "action": "remove-from-group", "seq": 2, "run_id": "9f2c...", "stage": "change", "change_applied": null, "error": "ReadTimeout: ...", "applied_before_failure": 1, "detail": {"user": "ivan", "group": "jira-users"}}
 ```
 
 **Partial failures:** if a change fails partway through `jml --apply` or `fix --apply` (including
@@ -60,15 +69,34 @@ written (full disk, bad permissions), the original error and the log error are p
 the command still exits 1; if the `intent` line can't be written, the change is not attempted. Nothing
 is rolled back automatically; use the log to finish or reverse the run.
 
+**Login activity:** `audit` and `fix` use Crowd's `lastAuthenticated` attribute, which Crowd only
+updates on some logins (SSO and remembered sessions in connected apps may not update it). A user with
+no recorded login is reported as `activity-unknown` (review) once the account is older than `--days`
+(or its creation date is unknown), and `fix` never deactivates them. `--days` must be at least 1.
+
+**Approved plan only:** `--apply` executes exactly the plan you confirmed; it does not re-read Crowd and
+re-plan after the prompt. Prompts and status messages go to stderr, so stdout is just the table/JSON/CSV.
+
 **Demo mode:** `--demo` or `CROWDKEEPER_DEMO=1` uses a built-in directory of 25 users and 8 groups with
 planted problems. Demo mode never writes anything to a directory; `--apply` falls back to a dry run.
 
-JML CSV format (`groups` separated by `;` or spaces; for movers it's the full target set):
+JML CSV format (`groups` separated by `;` or spaces; for movers it's the full target set). The
+`action` and `username` columns are required. The whole file is checked before anything is planned:
+unknown groups or malformed rows are reported with line numbers and nothing is changed. Rows run in
+order, so several rows for one user build on each other. For a mover, a missing `groups` column,
+a truncated row, or a blank cell (empty, only spaces, or only `;`) leaves memberships alone; it is
+never read as "remove all". To remove every group, write the explicit marker `-` or `none`
+(case-insensitive, unquoted). To name a real group literally called `none` or `-`, wrap it in
+single quotes inside the cell, e.g. `jira-users;'none';'-'`; any single-quoted token is taken as a
+literal group name, never as the marker. Quotes cannot protect spaces or `;` (they still split
+tokens), and an unbalanced (`'none`) or empty (`''`) quote is kept as-is and so fails as an unknown
+group with the line number; nothing is changed. Combining `-`/`none` with group names is a validation error with the line number:
 
 ```csv
 action,username,display_name,email,groups
 joiner,newhire,New Hire,newhire@example.com,jira-users;confluence-users
 mover,bob,,,jira-users;confluence-users
+mover,carol,,,-
 leaver,frank,,,
 ```
 
@@ -82,7 +110,7 @@ inactive            frank                 last login 140d ago                   
 inactive            heidi                 last login 220d ago                           deactivate
 disabled-in-groups  ivan                  disabled but in: bitbucket-users, jira-users  strip-groups
 disabled-in-groups  mallory               disabled but in: finance, jira-admins         strip-groups
-inactive            olivia                last login never                              deactivate
+activity-unknown    olivia                no recorded login (account 600d old)          review
 no-groups           olivia                active user in no groups                      review
 inactive            rupert                last login 95d ago                            deactivate
 disabled-in-groups  trent                 disabled but in: contractors                  strip-groups
@@ -102,12 +130,11 @@ remove-from-group  ivan        bitbucket-users
 remove-from-group  ivan        jira-users
 remove-from-group  mallory     finance
 remove-from-group  mallory     jira-admins
-deactivate-user    olivia
 deactivate-user    rupert
 remove-from-group  trent       contractors
 deactivate-user    svc-backup
 
-Dry run: 10 change(s) planned, nothing written. Use --apply to execute.
+Dry run: 9 change(s) planned, nothing written. Use --apply to execute.
 ```
 
 ```text
@@ -151,7 +178,8 @@ Inactivity threshold: 90 days
 | Users | 25 |
 | Active users | 21 |
 | Groups | 8 |
-| Inactive users (>= 90d) | 5 |
+| Inactive users (>= 90d) | 4 |
+| Active users with unknown login activity | 1 |
 | Active users with no groups | 3 |
 | Disabled users still in groups | 3 |
 | Empty groups | 1 |
@@ -162,7 +190,7 @@ Inactivity threshold: 90 days
 - **inactive** `heidi`: last login 220d ago (recommended: deactivate)
 - **disabled-in-groups** `ivan`: disabled but in: bitbucket-users, jira-users (recommended: strip-groups)
 - **disabled-in-groups** `mallory`: disabled but in: finance, jira-admins (recommended: strip-groups)
-- **inactive** `olivia`: last login never (recommended: deactivate)
+- **activity-unknown** `olivia`: no recorded login (account 600d old) (recommended: review)
 - **no-groups** `olivia`: active user in no groups (recommended: review)
 - **inactive** `rupert`: last login 95d ago (recommended: deactivate)
 - **disabled-in-groups** `trent`: disabled but in: contractors (recommended: strip-groups)

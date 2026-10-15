@@ -3,3 +3,5 @@ __pycache__/
 .pytest_cache/
 crowdkeeper-audit.json
 .venv/
+.coverage
+.ruff_cache/
