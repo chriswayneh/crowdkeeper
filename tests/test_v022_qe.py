@@ -3,6 +3,9 @@
 import re
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from markdown_it import MarkdownIt
 
 from crowdkeeper import cli, core
 from crowdkeeper.cli import main
@@ -74,9 +77,9 @@ def test_short_row_line_number_counts_physical_lines(tmp_path, monkeypatch, caps
 
 
 # 5. Markdown autolinks, _ and ~ (GFM-like render with linkify)
-MD = pytest.importorskip("markdown_it").MarkdownIt("gfm-like", {"linkify": True})
+MD = MarkdownIt("gfm-like", {"linkify": True})
 MD.enable(["linkify", "strikethrough"])
-BAD_HTML = re.compile(r"<a |<img|<script|<em>|<strong>|<s>|<del>")
+BAD_HTML = re.compile(r"<a |<img|<script|<em>|<strong>|<s>|<del>", re.IGNORECASE)
 
 
 def _cell(s):
@@ -99,11 +102,6 @@ def _cell(s):
 def test_md_safe_neutralises_autolinks_and_emphasis(s):
     html = _cell(s)
     assert html.count("<td>") == 2 and not BAD_HTML.search(html), html
-
-
-hyp = pytest.importorskip("hypothesis")
-from hypothesis import given, settings
-from hypothesis import strategies as st
 
 
 @settings(max_examples=500, deadline=None)
