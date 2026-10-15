@@ -44,7 +44,12 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 **Goal:** Strict input parsing, safe report rendering, and no Python tracebacks outside apply.
 
 - [x] Strict JML CSV parsing: duplicate or blank headers and broken quoting exit `2` with a line number, nothing changed
-- [x] `report` escapes Markdown link/emphasis characters and HTML in names
+- [x] Strict JML CSV: UTF-8 (optional BOM) required, an empty file or a missing required header rejected
+- [x] Strict JML CSV: row length must match the header (short and long rows exit `2`)
+- [x] Strict JML CSV: any control character, bidi or zero-width character in a field exits `2`
+- [x] JML row errors (unknown action or group, missing username, unknown mover/leaver) exit `2` with real file line numbers
+- [x] `report` escapes Markdown link/emphasis characters, HTML and autolinks (URLs, `www.`, fuzzy domains, e-mail) in names, checked with cmark-gfm and markdown-it linkify
+- [x] Terminal-safe output: one `term_safe` helper escapes control, bidi and zero-width characters in the table, CSV, report and error messages
 - [ ] Catch `KeyboardInterrupt` (and unexpected exceptions) outside apply and exit `130` with no traceback
 
 ## Phase 1: Harden (v0.3.0)

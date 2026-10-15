@@ -69,7 +69,7 @@ def test_md_safe_neutralises_link_and_html():
 
 
 def test_md_safe_keeps_existing_escapes():
-    assert core.md_safe("a|b`c\nd") == "a\\|b'c d"
+    assert core.md_safe("a|b`c\nd") == "a\\|b'c\\\\nd"  # newline shown as \\n since QE round 2
 
 
 def test_piped_yes_without_y_does_not_apply(tmp_path, monkeypatch, capsys):
@@ -124,6 +124,6 @@ def test_version_compares_numerically():
 
 def test_report_code_span_subject_not_backslash_or_entity_escaped():
     out = core.md_code_safe("a[b](c)*!&<x>|`y\nz")
-    assert "\\" not in out and "&amp;" not in out and "&lt;" not in out
+    assert "&amp;" not in out and "&lt;" not in out
     assert "`" not in out and "\n" not in out
-    assert out == "a[b](c)*!&<x>|'y z"
+    assert out == "a[b](c)*!&<x>|'y\\nz"

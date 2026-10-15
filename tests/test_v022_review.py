@@ -60,18 +60,18 @@ def test_table_neutralises_control_bidi_zero_width():
     out = core.fmt([{"user": EVIL, "group": "g\x00"}], ["user", "group"])
     for c in ("\x1b", "\u202e", "\u200b", "\u2028", "\x00"):
         assert c not in out
-    assert "U+001B" in out and "U+202E" in out and "U+0000" in out
+    assert "\\u001b" in out and "\\u202e" in out and "\\u0000" in out
 
 
 def test_table_header_and_widths_use_safe_text():
     out = core.fmt([{"user": "a\x1bb"}], ["user"])
     lines = out.splitlines()
-    assert len(lines[1]) == len("aU+001Bb")
+    assert len(lines[1]) == len("a\\u001bb")
 
 
 def test_csv_neutralises_control_chars():
     out = core.fmt([{"user": EVIL}], ["user"], "csv")
-    assert "\x1b" not in out and "\u202e" not in out and "U+001B" in out
+    assert "\x1b" not in out and "\u202e" not in out and "\\u001b" in out
 
 
 def test_json_escapes_and_round_trips():
@@ -91,7 +91,7 @@ def test_audit_table_cli_is_terminal_safe(monkeypatch, capsys):
 
 
 def test_shared_helper_is_used():
-    assert core.term_safe("a\x1bb\tc") == "aU+001Bb c"
+    assert core.term_safe("a\x1bb\tc") == "a\\u001bb\\tc"
 
 
 def test_stderr_error_text_is_terminal_safe(monkeypatch, capsys):
@@ -101,4 +101,4 @@ def test_stderr_error_text_is_terminal_safe(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_dir", boom)
     assert main(["audit"]) == 1
     err = capsys.readouterr().err
-    assert "\x1b" not in err and "\u202e" not in err and "U+001B" in err
+    assert "\x1b" not in err and "\u202e" not in err and "\\u001b" in err

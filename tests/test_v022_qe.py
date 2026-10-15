@@ -3,7 +3,7 @@
 import re
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 from markdown_it import MarkdownIt
 
@@ -106,6 +106,10 @@ def test_md_safe_neutralises_autolinks_and_emphasis(s):
 
 @settings(max_examples=500, deadline=None)
 @given(st.text())
+@example("0.KW")
+@example("a@b.co")
+@example("evil.co.uk/path")
+@example("xn--80ak6aa92e.com")
 def test_md_safe_property_one_plain_cell(s):
     html = _cell(s)
     assert html.count("<td>") == 2 and not BAD_HTML.search(html), (s, html)
@@ -139,7 +143,7 @@ def test_report_text_has_no_control_or_bidi_chars(fn):
     out = fn("a" + DANGEROUS + "b")
     bad = [c for c in out if unicodedata.category(c) in ("Cc", "Cf", "Zl", "Zp")]
     assert bad == [], out
-    assert "U+001B" in out and "U+202E" in out  # visible, not silently dropped
+    assert "\\u001b" in out and "\\u202e" in out  # visible, not silently dropped
 
 
 # 7. README release claim

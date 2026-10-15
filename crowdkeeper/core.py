@@ -84,16 +84,22 @@ def csv_safe(v):
     return "'" + v if v.startswith(_FORMULA) else v
 
 
+_ESC = {"\\": "\\\\", "\t": "\\t", "\n": "\\n", "\r": "\\r"}
+
+
 def term_safe(v):
-    """Turn newlines/tabs into spaces and any other control, format (bidi, zero-width) or
-    line/paragraph separator character into visible U+XXXX text, so report output can't carry
-    terminal escapes (ESC, OSC 8), reorder text (U+202E) or hide characters (U+200B)."""
+    """Make text safe to print: backslash, tab, CR, LF and every other control, format (bidi,
+    zero-width) or line/paragraph separator character become Python-style escapes (\\\\, \\t,
+    \\u001b, \\u202e, \\U000e0001), so output can't carry terminal escapes (ESC, OSC 8), reorder
+    text or hide characters. A literal backslash is doubled, so a name that really contains the
+    text "\\u001b" (shown as "\\\\u001b") never looks like a real ESC."""
     out = []
     for c in str(v):
-        if c in "\r\n\t":
-            out.append(" ")
+        if c in _ESC:
+            out.append(_ESC[c])
         elif unicodedata.category(c) in ("Cc", "Cf", "Zl", "Zp"):
-            out.append(f"U+{ord(c):04X}")
+            n = ord(c)
+            out.append(f"\\u{n:04x}" if n <= 0xFFFF else f"\\U{n:08x}")
         else:
             out.append(c)
     return "".join(out)
@@ -101,19 +107,19 @@ def term_safe(v):
 
 def md_safe(v):
     """Escape Markdown table/link/emphasis/strikethrough characters, autolinks and HTML so names
-    render as plain text."""
+    render as plain text under GFM (cmark-gfm autolink extension) and linkify. Every "." is
+    escaped (no fuzzy domains), "://" is broken, and each run of "@" is put in a code span
+    because cmark-gfm still links a backslash-escaped e-mail address."""
     s = term_safe(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     s = s.replace("\\", "\\\\").replace("`", "'")
-    for ch in "|[]()!*_~":
+    for ch in "|[]()!*_~.":
         s = s.replace(ch, "\\" + ch)
-    # break autolinks (GFM/linkify): scheme://, www. and e-mail addresses
     s = s.replace("://", ":\\/\\/")
-    s = re.sub(r"(?i)\bwww\.", lambda m: m.group(0)[:-1] + "\\.", s)
-    return s.replace("@", "\\@")
+    return re.sub("@+", lambda m: "`" + m.group(0) + "`", s)
 
 
 def md_code_safe(v):
-    """Make text safe inside a Markdown code span, where escapes and HTML are literal."""
+    """Make text safe inside a Markdown code span, where escapes, HTML and autolinks are literal."""
     return term_safe(v).replace("`", "'")
 
 

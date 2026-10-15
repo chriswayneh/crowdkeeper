@@ -82,12 +82,16 @@ no recorded login is reported as `activity-unknown` (review) once the account is
 
 **Approved plan only:** `--apply` executes exactly the plan you confirmed; it does not re-read Crowd and
 re-plan after the prompt. Prompts and status messages go to stderr, so stdout is just the table/JSON/CSV.
-Output is terminal-safe: in the table and CSV formats (and in error messages), control, bidi,
-zero-width and line/paragraph separator characters in names are shown as visible `U+XXXX` text
-(tabs and line breaks become spaces), so a hostile name can't inject terminal escapes or reorder
-text. CSV also keeps its spreadsheet-formula guard (a leading `'` before `=`, `+`, `-`, `@`). JSON
-keeps the exact value, with those characters written as `\uXXXX` escapes, so use `-o json` when
-you need the raw name.
+Output is terminal-safe: in the table and CSV formats, the Markdown report and error messages,
+tabs, line breaks and every control, bidi, zero-width or line/paragraph separator character in a
+name are shown as Python-style escapes (`\t`, `\n`, `\u001b`, `\u202e`), and a literal backslash
+is doubled (`\\`). So a hostile name can't inject terminal escapes or reorder text, and a name that
+really contains the text `\u001b` (shown as `\\u001b`) never looks like a real ESC. CSV also keeps
+its spreadsheet-formula guard (a leading `'` before `=`, `+`, `-`, `@`). JSON keeps the exact value,
+with those characters written as JSON `\uXXXX` escapes, so use `-o json` when you need the raw name.
+In the report, names are escaped so GitHub (cmark-gfm) and linkify renderers show them as plain
+text: no links (every `.` is escaped and each `@` is put in a code span, so URLs, bare domains and
+e-mail addresses don't autolink), no emphasis and no HTML.
 
 JML CSV format (`groups` separated by `;` or spaces; for movers it's the full target set). The
 `action` and `username` columns are required. The file must be UTF-8 (a leading BOM is fine). The CSV is parsed strictly: an empty file, a duplicate, blank or missing required column header (for

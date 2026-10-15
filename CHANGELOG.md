@@ -23,15 +23,21 @@ All notable changes to this project are documented here. This project follows
   quotes).
 - The Markdown `report` also escapes `_` and `~` and breaks autolinks (`://`, `www.`, `@`), and in
   both escaped text and code spans it shows control, bidi, zero-width and line/paragraph separator
-  characters as visible `U+XXXX` text, so report output can't inject terminal escapes (ESC, OSC 8)
+  characters as visible escapes (`\u001b`), so report output can't inject terminal escapes (ESC, OSC 8)
   or reorder text.
 - Row validation errors in `jml` (unknown action or group, missing username, a mover or leaver who
   doesn't exist) now exit 2 like other input errors (was 1), and their line numbers are the real
   file lines, so blank lines no longer shift them. Through the Python API they raise
   `core.JmlInputError`, a `ValueError` subclass; `core.jml()` takes an optional `lines` list.
 - The plain table and CSV outputs and CLI error messages show control, bidi, zero-width and
-  separator characters as `U+XXXX` text (shared `core.term_safe` helper). JSON is unchanged: it
+  separator characters as visible escapes (shared `core.term_safe` helper). JSON is unchanged: it
   already writes them as `\uXXXX` escapes and keeps the exact value.
+- `term_safe` writes those characters as Python-style escapes (`\u001b`, `\t`, `\n`) and doubles a
+  literal backslash, so a name containing the text `U+001B` or `\u001b` can't be mistaken for a
+  real control character.
+- The Markdown `report` escapes every `.` and puts each run of `@` in a code span, so bare domains
+  (`evil.com`, `xn--...`), `//host` paths and e-mail or `mailto:` addresses no longer autolink in
+  cmark-gfm (GitHub) or markdown-it linkify.
 
 ## [0.2.1] - 2026-10-15
 
