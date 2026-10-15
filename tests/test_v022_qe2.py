@@ -114,3 +114,10 @@ def test_roadmap_ticks_v022_items():
     sec = text.split("## Patch: v0.2.2")[1].split("\n## ")[0]
     for k in ("row length", "UTF-8", "control character", "row errors", "term_safe"):
         assert re.search(r"- \[x\] .*" + re.escape(k), sec, re.I), k
+
+
+def test_term_safe_astral_uses_capital_u_escape():
+    from crowdkeeper.core import term_safe
+
+    assert term_safe("\U000e0001") == "\\U000e0001"
+    assert term_safe("a\U000e0001b") == "a\\U000e0001b"
