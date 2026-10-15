@@ -17,4 +17,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[test]"
-      - run: pytest -v
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -v --cov=crowdkeeper --cov-branch --cov-report=term-missing
