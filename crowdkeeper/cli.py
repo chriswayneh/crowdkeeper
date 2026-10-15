@@ -40,8 +40,10 @@ def _run_plan(args, d, planner):
     # stdout carries only the selected format; prompts and status go to stderr
     print(core.fmt(plan, ["action", "user", "group"], args.output))
     if not args.apply:
-        print(f"Dry run: {len(plan)} change(s) planned, nothing written. Use --apply to execute.",
-              file=sys.stderr)
+        print(
+            f"Dry run: {len(plan)} change(s) planned, nothing written. Use --apply to execute.",
+            file=sys.stderr,
+        )
         return 0
     if not plan or not _confirm(args, len(plan)):
         print("Aborted, nothing changed." if plan else "Nothing to do.", file=sys.stderr)
@@ -50,17 +52,26 @@ def _run_plan(args, d, planner):
     try:
         ex.execute(preview.ops)  # exactly the confirmed plan, never re-planned
     except core.PartialFailure as e:
-        where = (f"the audit log {args.log} could not be written, so check it by hand"
-                 if e.log_error else f"all of them and the failure are recorded in {args.log}")
-        print(f"\nerror: {e}\nStopped. {e.applied} change(s) were applied before the failure; "
-              f"{where}", file=sys.stderr)
+        where = (
+            f"the audit log {args.log} could not be written, so check it by hand"
+            if e.log_error
+            else f"all of them and the failure are recorded in {args.log}"
+        )
+        print(
+            f"\nerror: {e}\nStopped. {e.applied} change(s) were applied before the failure; {where}",
+            file=sys.stderr,
+        )
         return 1
     except KeyboardInterrupt:
-        where = (f"the audit log {args.log} could not be written, so check it by hand"
-                 if ex.log_error else
-                 f"all of them and the interrupted change are recorded in {args.log}")
-        print(f"\nInterrupted. {ex.applied} change(s) were applied before the interrupt; "
-              f"{where}", file=sys.stderr)
+        where = (
+            f"the audit log {args.log} could not be written, so check it by hand"
+            if ex.log_error
+            else f"all of them and the interrupted change are recorded in {args.log}"
+        )
+        print(
+            f"\nInterrupted. {ex.applied} change(s) were applied before the interrupt; {where}",
+            file=sys.stderr,
+        )
         return 1
     print(f"Applied {len(ex.plan)} change(s). Audit log: {args.log}", file=sys.stderr)
     return 0
@@ -74,12 +85,16 @@ def _days(v):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="crowdkeeper", description=__doc__ or
-                                "Access hygiene and JML toolkit for Atlassian Crowd")
+    p = argparse.ArgumentParser(
+        prog="crowdkeeper", description=__doc__ or "Access hygiene and JML toolkit for Atlassian Crowd"
+    )
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("--demo", action="store_true", help="use the built-in fake directory")
-    p.add_argument("--insecure", action="store_true",
-                   help="allow a plain http:// CROWD_URL (sends the app password unencrypted)")
+    p.add_argument(
+        "--insecure",
+        action="store_true",
+        help="allow a plain http:// CROWD_URL (sends the app password unencrypted)",
+    )
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)
 

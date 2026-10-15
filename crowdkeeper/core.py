@@ -22,9 +22,14 @@ def audit(directory, days=90, now=None):
     findings = []
     for u in users:
         if u.active and u.last_login is not None and (now - u.last_login).days >= days:
-            findings.append({"type": "inactive", "subject": u.name,
-                             "detail": f"last login {(now - u.last_login).days}d ago",
-                             "fix": "deactivate"})
+            findings.append(
+                {
+                    "type": "inactive",
+                    "subject": u.name,
+                    "detail": f"last login {(now - u.last_login).days}d ago",
+                    "fix": "deactivate",
+                }
+            )
         elif u.active and u.last_login is None:
             # No lastAuthenticated: activity is UNKNOWN (new account, or Crowd never recorded
             # it, e.g. SSO/remembered sessions). Never auto-deactivate; flag for review only
@@ -32,20 +37,39 @@ def audit(directory, days=90, now=None):
             age = None if u.created is None else (now - u.created).days
             if age is None or age >= days:
                 seen = "created date unknown" if age is None else f"account {age}d old"
-                findings.append({"type": "activity-unknown", "subject": u.name,
-                                 "detail": f"no recorded login ({seen})", "fix": "review"})
+                findings.append(
+                    {
+                        "type": "activity-unknown",
+                        "subject": u.name,
+                        "detail": f"no recorded login ({seen})",
+                        "fix": "review",
+                    }
+                )
         if u.active and not u.groups:
-            findings.append({"type": "no-groups", "subject": u.name,
-                             "detail": "active user in no groups", "fix": "review"})
+            findings.append(
+                {
+                    "type": "no-groups",
+                    "subject": u.name,
+                    "detail": "active user in no groups",
+                    "fix": "review",
+                }
+            )
         if not u.active and u.groups:
-            findings.append({"type": "disabled-in-groups", "subject": u.name,
-                             "detail": "disabled but in: " + ", ".join(u.groups),
-                             "fix": "strip-groups", "groups": list(u.groups)})
+            findings.append(
+                {
+                    "type": "disabled-in-groups",
+                    "subject": u.name,
+                    "detail": "disabled but in: " + ", ".join(u.groups),
+                    "fix": "strip-groups",
+                    "groups": list(u.groups),
+                }
+            )
     used = {g for u in users for g in u.groups}
     for g in groups:
         if g not in used:
-            findings.append({"type": "empty-group", "subject": g,
-                             "detail": "group has no members", "fix": "review"})
+            findings.append(
+                {"type": "empty-group", "subject": g, "detail": "group has no members", "fix": "review"}
+            )
     return findings
 
 
@@ -76,8 +100,9 @@ def fmt(rows, cols, out="table"):
         return "(nothing found)"
     widths = [max(len(c), *(len(str(r.get(c, ""))) for r in rows)) for c in cols]
     line = lambda vals: "  ".join(str(v).ljust(w) for v, w in zip(vals, widths, strict=False)).rstrip()
-    return "\n".join([line(cols), line("-" * w for w in widths)] +
-                     [line(r.get(c, "") for c in cols) for r in rows])
+    return "\n".join(
+        [line(cols), line("-" * w for w in widths)] + [line(r.get(c, "") for c in cols) for r in rows]
+    )
 
 
 def export_groups(directory):
@@ -90,8 +115,10 @@ def export_groups(directory):
 
 def _snapshot_groups(snap, which):
     if not isinstance(snap, dict) or not isinstance(snap.get("groups"), dict):
-        raise ValueError(f"{which} snapshot: expected an object with a 'groups' mapping "
-                         "(made by `crowdkeeper groups export`)")
+        raise ValueError(
+            f"{which} snapshot: expected an object with a 'groups' mapping "
+            "(made by `crowdkeeper groups export`)"
+        )
     for g, members in snap["groups"].items():
         if not isinstance(members, list) or not all(isinstance(m, str) for m in members):
             raise ValueError(f"{which} snapshot: group {g!r} must map to a list of usernames")
@@ -121,8 +148,9 @@ class PartialFailure(Exception):
     def __init__(self, action, details, error, applied, log_error=None):
         self.action, self.details, self.error, self.applied = action, details, error, applied
         self.log_error = log_error
-        super().__init__(f"{action} {details} failed after {applied} applied change(s): "
-                         f"{auditlog.safe_error(error)}")
+        super().__init__(
+            f"{action} {details} failed after {applied} applied change(s): {auditlog.safe_error(error)}"
+        )
 
 
 def _rejected(e):
@@ -162,14 +190,26 @@ class Executor:
         else:
             applied = None
         try:
-            auditlog.record(self.log_path, "failed", action, details, seq=seq, run_id=self.run_id,
-                            stage=stage, change_applied=applied,
-                            error=auditlog.safe_error(e), applied_before_failure=self.applied)
+            auditlog.record(
+                self.log_path,
+                "failed",
+                action,
+                details,
+                seq=seq,
+                run_id=self.run_id,
+                stage=stage,
+                change_applied=applied,
+                error=auditlog.safe_error(e),
+                applied_before_failure=self.applied,
+            )
         except Exception as le:  # the log itself is broken: never hide the original error
             log_error = self.log_error = le
-            print(f"error: {action} failed: {auditlog.safe_error(e)}\n"
-                  f"error: could not write the failure to audit log {self.log_path}: "
-                  f"{auditlog.safe_error(le)}", file=sys.stderr)
+            print(
+                f"error: {action} failed: {auditlog.safe_error(e)}\n"
+                f"error: could not write the failure to audit log {self.log_path}: "
+                f"{auditlog.safe_error(le)}",
+                file=sys.stderr,
+            )
         if not isinstance(e, Exception):
             raise e
         raise PartialFailure(action, details, e, self.applied, log_error) from e
@@ -265,8 +305,14 @@ def jml(directory, rows, ex, fieldnames=None):
         cur = users.get(name)
         if kind == "joiner":
             if not cur:
-                ex.do("create-user", ex.d.add_user, name, r.get("display_name") or "",
-                      r.get("email") or "", user=name)
+                ex.do(
+                    "create-user",
+                    ex.d.add_user,
+                    name,
+                    r.get("display_name") or "",
+                    r.get("email") or "",
+                    user=name,
+                )
                 cur = users[name] = User(name, r.get("display_name") or "", r.get("email") or "")
             for g in groups or []:
                 if g not in cur.groups:
@@ -299,12 +345,18 @@ def jml(directory, rows, ex, fieldnames=None):
 def fix(findings, ex):
     for f in findings:
         if f["fix"] == "deactivate":
-            ex.do("deactivate-user", ex.d.deactivate, f["subject"], user=f["subject"],
-                  reason=f["detail"])
+            ex.do("deactivate-user", ex.d.deactivate, f["subject"], user=f["subject"], reason=f["detail"])
         elif f["fix"] == "strip-groups":
             for g in f["groups"]:
-                ex.do("remove-from-group", ex.d.remove_from_group, f["subject"], g,
-                      user=f["subject"], group=g, reason="disabled user")
+                ex.do(
+                    "remove-from-group",
+                    ex.d.remove_from_group,
+                    f["subject"],
+                    g,
+                    user=f["subject"],
+                    group=g,
+                    reason="disabled user",
+                )
     return ex.plan
 
 
@@ -314,18 +366,32 @@ def report(directory, days=90, now=None):
     users, groups = directory.users(), directory.groups()
     f = audit(directory, days, now)
     count = lambda t: sum(1 for x in f if x["type"] == t)
-    lines = ["# Crowd Access Review", "", f"Generated: {now:%Y-%m-%d %H:%M} UTC  ",
-             f"Inactivity threshold: {days} days", "", "## Summary", "",
-             "| Metric | Count |", "|---|---|",
-             f"| Users | {len(users)} |", f"| Active users | {sum(u.active for u in users)} |",
-             f"| Groups | {len(groups)} |",
-             f"| Inactive users (>= {days}d) | {count('inactive')} |",
-             f"| Active users with unknown login activity | {count('activity-unknown')} |",
-             f"| Active users with no groups | {count('no-groups')} |",
-             f"| Disabled users still in groups | {count('disabled-in-groups')} |",
-             f"| Empty groups | {count('empty-group')} |", "", "## Findings", ""]
-    lines += [f"- **{x['type']}** `{md_safe(x['subject'])}`: {md_safe(x['detail'])} (recommended: {x['fix']})"
-              for x in f] or ["No findings."]
+    lines = [
+        "# Crowd Access Review",
+        "",
+        f"Generated: {now:%Y-%m-%d %H:%M} UTC  ",
+        f"Inactivity threshold: {days} days",
+        "",
+        "## Summary",
+        "",
+        "| Metric | Count |",
+        "|---|---|",
+        f"| Users | {len(users)} |",
+        f"| Active users | {sum(u.active for u in users)} |",
+        f"| Groups | {len(groups)} |",
+        f"| Inactive users (>= {days}d) | {count('inactive')} |",
+        f"| Active users with unknown login activity | {count('activity-unknown')} |",
+        f"| Active users with no groups | {count('no-groups')} |",
+        f"| Disabled users still in groups | {count('disabled-in-groups')} |",
+        f"| Empty groups | {count('empty-group')} |",
+        "",
+        "## Findings",
+        "",
+    ]
+    lines += [
+        f"- **{x['type']}** `{md_safe(x['subject'])}`: {md_safe(x['detail'])} (recommended: {x['fix']})"
+        for x in f
+    ] or ["No findings."]
     lines += ["", "## Group sizes", "", "| Group | Members |", "|---|---|"]
     lines += [f"| {md_safe(g)} | {len(m)} |" for g, m in export_groups(directory)["groups"].items()]
     lines += ["", "_Produced by crowdkeeper. Remediate with `crowdkeeper fix` (dry-run by default)._"]

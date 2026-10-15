@@ -13,9 +13,13 @@ def record(path, event, action, detail=None, **fields):
     bad = (RESERVED - {"seq", "run_id"}) & fields.keys()
     if bad:
         raise ValueError(f"reserved audit-log field name(s): {', '.join(sorted(bad))}")
-    entry = {"ts": datetime.now(timezone.utc).isoformat(), "event": event, "action": action,
-             **{k: v for k, v in fields.items() if k not in SENSITIVE},
-             "detail": {k: v for k, v in (detail or {}).items() if k not in SENSITIVE}}
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "event": event,
+        "action": action,
+        **{k: v for k, v in fields.items() if k not in SENSITIVE},
+        "detail": {k: v for k, v in (detail or {}).items() if k not in SENSITIVE},
+    }
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
     return entry

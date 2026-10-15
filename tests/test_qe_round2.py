@@ -1,4 +1,5 @@
 """QE round 2 (PR #2 at e51abc6) and Red Team items. Each test failed before its fix."""
+
 import json
 import re
 import shutil
@@ -23,11 +24,11 @@ def _entries(p):
 
 # ---- 1: blank groups cell never strips a mover ---------------------------------------------
 
+
 @pytest.mark.parametrize("cell", ["", " ", "   ", ";", " ; ;", ";;"])
 def test_item1_blank_groups_cell_leaves_mover_alone(cell):
     d = DemoDirectory()
-    rows = [{"action": "mover", "username": "bob", "display_name": "", "email": "",
-             "groups": cell}]
+    rows = [{"action": "mover", "username": "bob", "display_name": "", "email": "", "groups": cell}]
     assert core.jml(d, rows, core.Executor(d), COLS) == []
 
 
@@ -37,13 +38,17 @@ def test_item1_explicit_none_removes_all_groups(cell):
     rows = [{"action": "mover", "username": "bob", "groups": cell}]
     plan = core.jml(d, rows, core.Executor(d), ["action", "username", "groups"])
     assert sorted((p["action"], p["group"]) for p in plan) == [
-        ("remove-from-group", "bitbucket-users"), ("remove-from-group", "jira-users")]
+        ("remove-from-group", "bitbucket-users"),
+        ("remove-from-group", "jira-users"),
+    ]
 
 
 def test_item1_none_mixed_with_groups_is_a_line_error():
     d = DemoDirectory()
-    rows = [{"action": "mover", "username": "bob", "groups": "jira-users"},
-            {"action": "mover", "username": "bob", "groups": "-;jira-users"}]
+    rows = [
+        {"action": "mover", "username": "bob", "groups": "jira-users"},
+        {"action": "mover", "username": "bob", "groups": "-;jira-users"},
+    ]
     with pytest.raises(ValueError, match="line 3"):
         core.jml(d, rows, core.Executor(d), ["action", "username", "groups"])
 
@@ -55,11 +60,11 @@ def test_item1_cli_blank_cell_plans_nothing_and_dash_removes(tmp_path, capsys):
     assert json.loads(capsys.readouterr().out) == []
     p.write_text("action,username,display_name,email,groups\nmover,bob,,,-\n")
     assert main(["--demo", "jml", str(p), "-o", "json"]) == 0
-    assert {x["group"] for x in json.loads(capsys.readouterr().out)} == {
-        "jira-users", "bitbucket-users"}
+    assert {x["group"] for x in json.loads(capsys.readouterr().out)} == {"jira-users", "bitbucket-users"}
 
 
 # ---- 2: password scrubbing does not over-mask ----------------------------------------------
+
 
 def test_item2_short_password_not_masked_inside_words(monkeypatch):
     monkeypatch.setenv("CROWD_APP_PASSWORD", "us")
@@ -80,14 +85,15 @@ def test_item2_long_password_masked_anywhere(monkeypatch):
 
 # ---- 3: README example shows change_applied null -------------------------------------------
 
+
 def test_item3_readme_failed_example_shows_change_applied_null():
-    lines = [x for x in (ROOT / "README.md").read_text().splitlines()
-             if x.startswith('{"ts"')]
+    lines = [x for x in (ROOT / "README.md").read_text().splitlines() if x.startswith('{"ts"')]
     failed = [json.loads(x) for x in lines if '"event": "failed"' in x]
     assert failed and failed[0]["stage"] == "change" and failed[0]["change_applied"] is None
 
 
 # ---- 4: Ctrl-C during the applied-line write ------------------------------------------------
+
 
 def test_item4_interrupt_during_applied_write_logs_applied_log(tmp_path, monkeypatch):
     log = tmp_path / "a.json"
@@ -99,6 +105,7 @@ def test_item4_interrupt_during_applied_write_logs_applied_log(tmp_path, monkeyp
             hit.append(1)
             raise KeyboardInterrupt
         return real(path, event, *a, **k)
+
     monkeypatch.setattr(auditlog, "record", interrupting)
     d = DemoDirectory()
     d.writable, calls = True, []
@@ -114,6 +121,7 @@ def test_item4_interrupt_during_applied_write_logs_applied_log(tmp_path, monkeyp
 
 # ---- 5: ruff clean with a project config ----------------------------------------------------
 
+
 def test_item5_pyproject_has_ruff_config():
     assert "[tool.ruff]" in (ROOT / "pyproject.toml").read_text()
 
@@ -126,15 +134,18 @@ def test_item5_ruff_check_clean():
 
 # ---- 6: CHANGELOG has no blank line inside a list --------------------------------------------
 
+
 def test_item6_changelog_no_blank_line_between_list_items():
     lines = (ROOT / "CHANGELOG.md").read_text().splitlines()
     for i in range(1, len(lines) - 1):
         if lines[i] == "":
-            assert not (lines[i - 1].startswith(("- ", "  ")) and lines[i + 1].startswith("- ")), \
+            assert not (lines[i - 1].startswith(("- ", "  ")) and lines[i + 1].startswith("- ")), (
                 f"stray blank line at CHANGELOG.md:{i + 1}"
+            )
 
 
 # ---- 7: client.py branch coverage (mocked HTTP) ---------------------------------------------
+
 
 class Resp:
     def __init__(self, status=200, data=None):
@@ -155,6 +166,7 @@ def client(monkeypatch):
     def fake(method, url, **kw):
         calls.append((method, url, kw))
         return script.pop(0) if script else Resp(204)
+
     monkeypatch.setattr(c.s, "request", fake)
     return c, calls, script
 
@@ -184,15 +196,21 @@ def test_item7_search_paginates(client, monkeypatch):
     def fake(method, path, **kw):
         seen.append(kw["params"]["start-index"])
         return pages[len(seen) - 1]
+
     monkeypatch.setattr(c, "_req", fake)
     assert len(c._search("user")) == 1001 and seen == [0, 1000]
 
 
-@pytest.mark.parametrize("data,expected", [
-    (None, None), ({}, None), ({"attributes": [{"name": "other", "values": ["1"]}]}, None),
-    ({"attributes": [{"name": "lastAuthenticated", "values": []}]}, None),
-    ({"attributes": [{"name": "lastAuthenticated", "values": ["1760486400000"]}]},
-     "2025-10-15")])
+@pytest.mark.parametrize(
+    "data,expected",
+    [
+        (None, None),
+        ({}, None),
+        ({"attributes": [{"name": "other", "values": ["1"]}]}, None),
+        ({"attributes": [{"name": "lastAuthenticated", "values": []}]}, None),
+        ({"attributes": [{"name": "lastAuthenticated", "values": ["1760486400000"]}]}, "2025-10-15"),
+    ],
+)
 def test_item7_last_login(client, monkeypatch, data, expected):
     c, _, _ = client
     monkeypatch.setattr(c, "_req", lambda *a, **k: data)
@@ -202,10 +220,24 @@ def test_item7_last_login(client, monkeypatch, data, expected):
 
 def test_item7_users_and_groups(client, monkeypatch):
     c, _, _ = client
-    monkeypatch.setattr(c, "_search", lambda e: [
-        {"name": "bob", "display-name": "Bob", "email": "b@x", "active": False,
-         "created-date": 1760486400000}, {"name": "amy"}] if e == "user" else
-        [{"name": "z"}, {"name": "a"}])
+    monkeypatch.setattr(
+        c,
+        "_search",
+        lambda e: (
+            [
+                {
+                    "name": "bob",
+                    "display-name": "Bob",
+                    "email": "b@x",
+                    "active": False,
+                    "created-date": 1760486400000,
+                },
+                {"name": "amy"},
+            ]
+            if e == "user"
+            else [{"name": "z"}, {"name": "a"}]
+        ),
+    )
     monkeypatch.setattr(c, "_last_login", lambda n: None)
     monkeypatch.setattr(c, "_direct_groups", lambda n: ["g"])
     bob, amy = c.users()
@@ -223,7 +255,10 @@ def test_item7_writes_send_expected_requests(client):
     c.deactivate("neo")
     body = calls[0][2]["json"]
     assert (body["first-name"], body["last-name"], body["password"]) == (
-        "Neo", "Anderson", {"value": "s3cret-pass"})
+        "Neo",
+        "Anderson",
+        {"value": "s3cret-pass"},
+    )
     assert calls[1][2]["json"]["first-name"] == "trin" and "password" not in calls[1][2]["json"]
     assert calls[2][0] == "POST" and calls[2][2]["json"] == {"name": "hr"}
     assert calls[3][0] == "DELETE" and calls[3][2]["params"]["groupname"] == "hr"
@@ -246,13 +281,15 @@ def test_item7_from_env(monkeypatch):
 
 # ---- 8: Red Team -----------------------------------------------------------------------------
 
+
 def test_item8_requests_floor_is_2_32_4():
     assert re.search(r'"requests>=2\.32\.4"', (ROOT / "pyproject.toml").read_text())
     assert tuple(int(x) for x in requests.__version__.split(".")[:3]) >= (2, 32, 4)
 
 
-@pytest.mark.parametrize("url", ["http://localhost:8095", "http://127.0.0.1", "http://[::1]:8095",
-                                 "http://crowd.example.com"])
+@pytest.mark.parametrize(
+    "url", ["http://localhost:8095", "http://127.0.0.1", "http://[::1]:8095", "http://crowd.example.com"]
+)
 def test_item8_any_http_refused_without_insecure(url):
     with pytest.raises(CrowdError, match="--insecure"):
         CrowdClient(url, "app", "pw")
