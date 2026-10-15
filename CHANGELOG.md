@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [0.2.0] - 2026-10-14
+## [0.2.0] - 2026-10-15
 
 ### Changed
 - **Breaking: new audit-log format.** Each applied change now writes an `intent` line before the
