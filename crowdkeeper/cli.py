@@ -48,6 +48,10 @@ def _run_plan(args, d, planner):
         print(f"\nerror: {e}\nStopped. {e.applied} change(s) were applied before the failure; "
               f"all of them and the failure are recorded in {args.log}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        print(f"\nInterrupted. {ex.applied} change(s) were applied before the interrupt; "
+              f"all of them and the interrupted change are recorded in {args.log}", file=sys.stderr)
+        return 1
     print(f"\nApplied {len(ex.plan)} change(s). Audit log: {args.log}")
     return 0
 

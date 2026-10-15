@@ -266,3 +266,18 @@ def test_interrupt_mid_apply_still_logged(tmp_path):
     with pytest.raises(KeyboardInterrupt):
         core.fix(core.audit(d, 90, NOW), ex)
     assert _entries(log)[-1]["action"] == "failed"
+
+
+def test_cli_interrupt_exits_1_without_traceback(tmp_path, monkeypatch, capsys):
+    from crowdkeeper import cli
+
+    class Interrupting(FakeWritable):
+        def deactivate(self, u):
+            raise KeyboardInterrupt
+    d = Interrupting()
+    log = tmp_path / "audit.json"
+    args = type("A", (), {"apply": True, "output": "table", "log": str(log), "yes": True})()
+    monkeypatch.setattr(cli, "_confirm", lambda a, n: True)
+    assert cli._run_plan(args, d, lambda ex: core.fix(core.audit(d, 90, NOW), ex)) == 1
+    assert "Interrupted" in capsys.readouterr().err
+    assert _entries(log)[-1]["action"] == "failed"
