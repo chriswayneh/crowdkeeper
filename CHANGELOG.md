@@ -21,9 +21,9 @@ All notable changes to this project are documented here. This project follows
 - **Breaking:** `jml` movers: a blank `groups` cell (empty, spaces, or only `;`) now leaves
   memberships alone. Removing every group requires the explicit marker `-` or `none`; mixing it
   with group names is rejected with the line number.
-- Requires `requests>=2.32.4` (fixes CVE-2024-35195 and CVE-2024-47081).
-- Error text masks an app password of 8+ characters anywhere, and a shorter one only as a whole
-  token, so short passwords no longer mangle unrelated words.
+- Requires `requests>=2.32.4` (CVE-2024-35195 was fixed in 2.32.0, CVE-2024-47081 in 2.32.4).
+- Error text masks an app password of 8+ characters anywhere, and a shorter one only where no letter
+  or digit touches it, so short passwords no longer mangle unrelated words.
 - **Breaking:** users with no recorded login are now `activity-unknown` (review) instead of
   `inactive` (deactivate), and are only flagged once the account is older than `--days`.
 - `--days` must be a positive whole number (`audit`, `fix`, `report`, and the core API).

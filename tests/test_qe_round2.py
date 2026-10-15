@@ -290,3 +290,10 @@ def test_item8_security_md():
     assert "SECURITY.md" in (ROOT / "README.md").read_text()
     assert "--insecure" in (ROOT / "README.md").read_text()
     assert "2.32.4" in (ROOT / "CHANGELOG.md").read_text()
+
+
+def test_item2_short_password_masked_next_to_punctuation(monkeypatch):
+    monkeypatch.setenv("CROWD_APP_PASSWORD", "pw1")
+    for raw in ("password pw1.", "pw1-rejected", "x=_pw1_", "'pw1'", "(pw1)"):
+        assert "pw1" not in auditlog.scrub(raw), raw
+    assert auditlog.scrub("pw12 apw1") == "pw12 apw1"  # different alphanumeric tokens
