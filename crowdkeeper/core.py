@@ -83,8 +83,12 @@ def csv_safe(v):
 
 
 def md_safe(v):
-    """Escape characters that would break Markdown tables/code spans."""
-    return str(v).replace("\\", "\\\\").replace("|", "\\|").replace("`", "'").replace("\n", " ")
+    """Escape Markdown table/link/emphasis characters and HTML so names render as plain text."""
+    s = str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    s = s.replace("\\", "\\\\").replace("`", "'").replace("\n", " ").replace("\r", " ")
+    for ch in "|[]()!*":
+        s = s.replace(ch, "\\" + ch)
+    return s
 
 
 def fmt(rows, cols, out="table"):

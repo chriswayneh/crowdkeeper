@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - Unreleased
+
+### Fixed
+- `jml` parses the CSV strictly. Duplicate or blank column headers (for example two `groups`
+  columns, which could plan removal of all of a user's groups) and broken quoting (an unclosed
+  quote, or text after a closing quote, which could still plan a removal or deactivation) are now
+  rejected with a line-numbered error, exit 2 (the usage-error code), and nothing is planned or
+  changed.
+- The Markdown `report` escapes `[ ] ( ) ! *` and HTML (`&`, `<`, `>`) in user and group names,
+  so a name can't render as a link, image, emphasis or HTML.
+
 ## [0.2.1] - 2026-10-15
 
 ### Fixed

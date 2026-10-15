@@ -20,6 +20,49 @@ def _dir(args):
     return CrowdClient.from_env(insecure=getattr(args, "insecure", False)), None
 
 
+class _CsvError(Exception):
+    """Malformed JML CSV (bad header or broken quoting); nothing is planned or changed."""
+
+
+def _read_jml_csv(path):
+    """Read a JML CSV strictly: unique, non-blank headers and well-formed quoting."""
+    with open(path, newline="") as f:
+        reader = csv.reader(f, strict=True)
+        try:
+            header = next(reader, None)
+            if header is None:
+                return [], None
+            seen, cols = set(), []
+            for h in header:
+                name = h.strip()
+                if not name:
+                    raise _CsvError(f"{path}: line 1: blank column header")
+                if name in seen:
+                    raise _CsvError(f"{path}: line 1: duplicate column header {name!r}")
+                seen.add(name)
+                cols.append(h)
+            rows = []
+            while True:
+                start = reader.line_num + 1
+                try:
+                    vals = next(reader)
+                except StopIteration:
+                    break
+                except csv.Error as e:
+                    raise _CsvError(f"{path}: line {start}: malformed CSV ({e})") from None
+                if not vals:
+                    continue
+                row = dict(zip(cols, vals, strict=False))
+                for c in cols[len(vals) :]:
+                    row[c] = None
+                if len(vals) > len(cols):
+                    row[None] = vals[len(cols) :]
+                rows.append(row)
+        except csv.Error as e:
+            raise _CsvError(f"{path}: line 1: malformed CSV header ({e})") from None
+    return rows, cols
+
+
 REFUSED = None  # _confirm result: non-TTY stdin without -y (caller exits 2)
 
 
@@ -165,9 +208,11 @@ def main(argv=None):
             else:
                 print(md, end="")
         elif args.cmd == "jml":
-            with open(args.csv, newline="") as f:
-                reader = csv.DictReader(f)
-                rows, cols = list(reader), reader.fieldnames
+            try:
+                rows, cols = _read_jml_csv(args.csv)
+            except _CsvError as e:
+                print(f"error: {e}", file=sys.stderr)
+                return 2
             return _run_plan(args, d, lambda ex: core.jml(d, rows, ex, cols))
         elif args.cmd == "fix":
             findings = core.audit(d, args.days, now)

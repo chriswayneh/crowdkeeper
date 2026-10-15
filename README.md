@@ -44,7 +44,7 @@ see a failure. Declining at an interactive prompt still exits 0. Every applied c
 |---|---|
 | 0 | Success, a dry run, nothing to do, or declined at the interactive prompt |
 | 1 | Invalid input, a Crowd, network or file error, or a partial apply (including Ctrl-C during `--apply`) |
-| 2 | A usage error (bad arguments, from argparse), or `--apply` on non-TTY stdin without `-y` |
+| 2 | A usage error (bad arguments, from argparse), a malformed JML CSV (duplicate or blank header, broken quoting), or `--apply` on non-TTY stdin without `-y` |
 
 **Audit log format:** each change writes two lines. An `intent` line is written *before* the change
 is sent to Crowd, and an `applied` line after it succeeds, so even a Ctrl-C or kill mid-change leaves
@@ -84,7 +84,9 @@ no recorded login is reported as `activity-unknown` (review) once the account is
 re-plan after the prompt. Prompts and status messages go to stderr, so stdout is just the table/JSON/CSV.
 
 JML CSV format (`groups` separated by `;` or spaces; for movers it's the full target set). The
-`action` and `username` columns are required. The whole file is checked before anything is planned or changed, including through the Python
+`action` and `username` columns are required. The CSV is parsed strictly: a duplicate or blank column header (for
+example two `groups` columns) or broken quoting (an unclosed `"`, or text after a closing quote)
+stops the run with the line number and exit code 2 before anything is planned or changed. The whole file is checked before anything is planned or changed, including through the Python
 API with `Executor(apply=True)`: an unknown action, an empty username, a mover or leaver who
 doesn't exist (counting users created by earlier joiner rows), unknown groups or malformed rows are
 all reported with line numbers and nothing is changed. Rows run in

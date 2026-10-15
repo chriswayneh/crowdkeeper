@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "crowdkeeper"
-version = "0.2.1"
+version = "0.2.2"
 description = "Access hygiene and joiner/mover/leaver CLI for Atlassian Crowd admins"
 readme = "README.md"
 license = {text = "MIT"}

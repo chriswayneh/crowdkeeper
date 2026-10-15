@@ -41,8 +41,10 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 
 ## Patch: v0.2.2
 
-**Goal:** No Python tracebacks outside apply.
+**Goal:** Strict input parsing, safe report rendering, and no Python tracebacks outside apply.
 
+- [x] Strict JML CSV parsing: duplicate or blank headers and broken quoting exit `2` with a line number, nothing changed
+- [x] `report` escapes Markdown link/emphasis characters and HTML in names
 - [ ] Catch `KeyboardInterrupt` (and unexpected exceptions) outside apply and exit `130` with no traceback
 
 ## Phase 1: Harden (v0.3.0)

@@ -95,10 +95,10 @@ def test_cli_non_tty_without_y_aborts_nothing_changed(tmp_path, monkeypatch, cap
     assert d.calls == [] and not log.exists()
 
 
-def test_version_is_0_2_1():
+def test_version_is_0_2_1_or_later():
     import crowdkeeper
 
-    assert crowdkeeper.__version__ == "0.2.1"
+    assert crowdkeeper.__version__ >= "0.2.1"
     assert json.dumps(crowdkeeper.__version__)
 
 
