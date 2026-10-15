@@ -288,7 +288,7 @@ flowchart LR
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md). See [CHANGELOG.md](CHANGELOG.md) and the GitHub releases for the current version (0.2.2 is unreleased). Phase 0 is done and Phase 1 (harden live mode) is next.
+See [ROADMAP.md](ROADMAP.md). See [CHANGELOG.md](CHANGELOG.md) and the GitHub releases for the current version. Phase 0 is done and Phase 1 (harden live mode) is next.
 
 ## Development
 
