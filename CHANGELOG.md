@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-10-15
+
+### Fixed
+- `jml` now checks every row up front, before any change, including when `core.jml` is called
+  directly with `Executor(apply=True)`: unknown action, empty username, and movers or leavers that
+  don't exist (users created by earlier joiner rows count). Previously a valid row before a bad one
+  could already have been applied through the API. All bad lines are reported together.
+- The `--apply` confirmation prompt refuses when stdin is not a terminal and `-y` isn't passed, so
+  piped input such as `echo yes |` can't confirm a change, and exits 2 (the usage-error code) so cron and CI
+  see a failure. Previously only end-of-input counted as no. Declining at an interactive prompt
+  still exits 0.
+
 ## [0.2.0] - 2026-10-15
 
 ### Changed
@@ -29,7 +41,8 @@ All notable changes to this project are documented here. This project follows
   `inactive` (deactivate), and are only flagged once the account is older than `--days`.
 - `--days` must be a positive whole number (`audit`, `fix`, `report`, and the core API).
 - `jml` checks the whole CSV first (required `action`/`username` columns, extra values, unknown
-  groups, with line numbers) and makes no change if anything is wrong.
+  groups, with line numbers) and makes no change if anything is wrong. (Through the API this held
+  only for those checks until 0.2.1, which also validates actions, usernames and user existence.)
 - Prompts and status messages go to stderr; stdout carries only the selected output format.
 
 ### Fixed
