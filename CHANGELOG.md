@@ -25,6 +25,13 @@ All notable changes to this project are documented here. This project follows
   both escaped text and code spans it shows control, bidi, zero-width and line/paragraph separator
   characters as visible `U+XXXX` text, so report output can't inject terminal escapes (ESC, OSC 8)
   or reorder text.
+- Row validation errors in `jml` (unknown action or group, missing username, a mover or leaver who
+  doesn't exist) now exit 2 like other input errors (was 1), and their line numbers are the real
+  file lines, so blank lines no longer shift them. Through the Python API they raise
+  `core.JmlInputError`, a `ValueError` subclass; `core.jml()` takes an optional `lines` list.
+- The plain table and CSV outputs and CLI error messages show control, bidi, zero-width and
+  separator characters as `U+XXXX` text (shared `core.term_safe` helper). JSON is unchanged: it
+  already writes them as `\uXXXX` escapes and keeps the exact value.
 
 ## [0.2.1] - 2026-10-15
 

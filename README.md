@@ -43,8 +43,8 @@ see a failure. Declining at an interactive prompt still exits 0. Every applied c
 | Code | Meaning |
 |---|---|
 | 0 | Success, a dry run, nothing to do, or declined at the interactive prompt |
-| 1 | Invalid input, a Crowd, network or file error, or a partial apply (including Ctrl-C during `--apply`) |
-| 2 | A usage error (bad arguments, from argparse), a malformed JML CSV (empty file with no header, a duplicate, blank or missing required header, broken quoting, a row with more or fewer values than the header, text that isn't UTF-8, or a control or invisible character such as NUL, tab, ESC, U+202E or U+200B in any field), or `--apply` on non-TTY stdin without `-y` |
+| 1 | A Crowd, network or file error, an invalid `groups diff` snapshot, or a partial apply (including Ctrl-C during `--apply`) |
+| 2 | A usage error (bad arguments, from argparse), a malformed JML CSV (empty file with no header, a duplicate, blank or missing required header, broken quoting, a row with more or fewer values than the header, text that isn't UTF-8, or a control or invisible character such as NUL, tab, ESC, U+202E or U+200B in any field), an invalid JML row (unknown action or group, missing username, a mover or leaver who doesn't exist), or `--apply` on non-TTY stdin without `-y` |
 
 **Audit log format:** each change writes two lines. An `intent` line is written *before* the change
 is sent to Crowd, and an `applied` line after it succeeds, so even a Ctrl-C or kill mid-change leaves
@@ -82,6 +82,12 @@ no recorded login is reported as `activity-unknown` (review) once the account is
 
 **Approved plan only:** `--apply` executes exactly the plan you confirmed; it does not re-read Crowd and
 re-plan after the prompt. Prompts and status messages go to stderr, so stdout is just the table/JSON/CSV.
+Output is terminal-safe: in the table and CSV formats (and in error messages), control, bidi,
+zero-width and line/paragraph separator characters in names are shown as visible `U+XXXX` text
+(tabs and line breaks become spaces), so a hostile name can't inject terminal escapes or reorder
+text. CSV also keeps its spreadsheet-formula guard (a leading `'` before `=`, `+`, `-`, `@`). JSON
+keeps the exact value, with those characters written as `\uXXXX` escapes, so use `-o json` when
+you need the raw name.
 
 JML CSV format (`groups` separated by `;` or spaces; for movers it's the full target set). The
 `action` and `username` columns are required. The file must be UTF-8 (a leading BOM is fine). The CSV is parsed strictly: an empty file, a duplicate, blank or missing required column header (for
@@ -91,7 +97,7 @@ UTF-8, or a control or invisible character (NUL, tab, ESC, a line break inside q
 zero-width characters) in any field stops the run with the line number and exit code 2 before anything is planned or changed. The whole file is checked before anything is planned or changed, including through the Python
 API with `Executor(apply=True)`: an unknown action, an empty username, a mover or leaver who
 doesn't exist (counting users created by earlier joiner rows), unknown groups or malformed rows are
-all reported with line numbers and nothing is changed. Rows run in
+all reported with their real file line numbers (blank lines counted) and exit code 2, and nothing is changed. Rows run in
 order, so several rows for one user build on each other. For a mover, a missing `groups` column
 or a blank cell (empty, only spaces, or only `;`) leaves memberships alone; it is
 never read as "remove all". To remove every group, write the explicit marker `-` or `none`

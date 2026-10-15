@@ -21,24 +21,27 @@ def _jml(tmp_path, monkeypatch, text, *extra):
 # (a) real file line numbers in later validation errors
 def test_unknown_group_line_counts_blank_lines(tmp_path, monkeypatch, capsys):
     rc, _ = _jml(tmp_path, monkeypatch, "action,username,groups\n\n\nmover,bob,no-such-group\n")
+    assert rc == 2
     assert "line 4: unknown group" in capsys.readouterr().err
 
 
 def test_missing_user_line_counts_blank_lines(tmp_path, monkeypatch, capsys):
     rc, _ = _jml(tmp_path, monkeypatch, "action,username,groups\nleaver,frank,\n\nleaver,ghost,\n")
+    assert rc == 2
     assert "line 4: leaver ghost: no such user" in capsys.readouterr().err
 
 
 def test_line_numbers_count_leading_and_middle_blank_lines(tmp_path, monkeypatch, capsys):
     # blank lines both before the header and between rows
     rc, _ = _jml(tmp_path, monkeypatch, "\naction,username,groups\nleaver,frank,\n\n\nbogus,frank,\n")
+    assert rc == 2
     assert "line 6: unknown action" in capsys.readouterr().err
 
 
 def test_read_returns_line_numbers(tmp_path):
     p = tmp_path / "j.csv"
     p.write_text("action,username\n\nleaver,frank\n\n\nleaver,bob\n")
-    rows, cols, lines = cli._read_jml_csv(p, with_lines=True)
+    _, _, lines = cli._read_jml_csv(p, with_lines=True)
     assert lines == [3, 6]
 
 
@@ -89,3 +92,13 @@ def test_audit_table_cli_is_terminal_safe(monkeypatch, capsys):
 
 def test_shared_helper_is_used():
     assert core.term_safe("a\x1bb\tc") == "aU+001Bb c"
+
+
+def test_stderr_error_text_is_terminal_safe(monkeypatch, capsys):
+    def boom(a):
+        raise ValueError("server said \x1b]8;;http://evil\x1b\\hi\u202e")
+
+    monkeypatch.setattr(cli, "_dir", boom)
+    assert main(["audit"]) == 1
+    err = capsys.readouterr().err
+    assert "\x1b" not in err and "\u202e" not in err and "U+001B" in err

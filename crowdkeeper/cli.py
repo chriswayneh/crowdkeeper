@@ -34,10 +34,16 @@ def _bad_char(text):
     return next((c for c in text if unicodedata.category(c) in _BAD_CATS), None)
 
 
-def _read_jml_csv(path):
+def _safe(msg):
+    """Error text for the terminal: keep line breaks, neutralise escapes/bidi per line."""
+    return "\n".join(core.term_safe(part) for part in str(msg).split("\n"))
+
+
+def _read_jml_csv(path, with_lines=False):
     """Read a JML CSV strictly. Raise _CsvError (exit 2, nothing planned) for: non-UTF-8 bytes, an
     empty file, a duplicate, blank or missing required header, broken quoting, a row with more or
-    fewer values than the header, or a control/format character in any field."""
+    fewer values than the header, or a control/format character in any field. With with_lines,
+    also return each row's real starting line in the file (blank lines counted)."""
     with open(path, "rb") as f:
         data = f.read()
     try:
@@ -80,7 +86,7 @@ def _read_jml_csv(path):
     missing = [c for c in core.JML_REQUIRED if c not in cols]
     if missing:
         raise _CsvError(f"{path}: line {start}: header is missing required column(s): {', '.join(missing)}")
-    rows = []
+    rows, lines = [], []
     while True:
         vals, start = nxt()
         if vals is None:
@@ -93,7 +99,8 @@ def _read_jml_csv(path):
                 f"{path}: line {start}: {what} values ({len(vals)}) than header columns ({len(cols)})"
             )
         rows.append(dict(zip(cols, vals, strict=True)))
-    return rows, cols
+        lines.append(start)
+    return (rows, cols, lines) if with_lines else (rows, cols)
 
 
 REFUSED = None  # _confirm result: non-TTY stdin without -y (caller exits 2)
@@ -145,7 +152,7 @@ def _run_plan(args, d, planner):
             else f"all of them and the failure are recorded in {args.log}"
         )
         print(
-            f"\nerror: {e}\nStopped. {e.applied} change(s) were applied before the failure; {where}",
+            f"\nerror: {_safe(e)}\nStopped. {e.applied} change(s) were applied before the failure; {where}",
             file=sys.stderr,
         )
         return 1
@@ -242,16 +249,20 @@ def main(argv=None):
                 print(md, end="")
         elif args.cmd == "jml":
             try:
-                rows, cols = _read_jml_csv(args.csv)
+                rows, cols, lines = _read_jml_csv(args.csv, with_lines=True)
             except _CsvError as e:
-                print(f"error: {e}", file=sys.stderr)
+                print(f"error: {_safe(e)}", file=sys.stderr)
                 return 2
-            return _run_plan(args, d, lambda ex: core.jml(d, rows, ex, cols))
+            try:
+                return _run_plan(args, d, lambda ex: core.jml(d, rows, ex, cols, lines))
+            except core.JmlInputError as e:
+                print(f"error: {_safe(e)}", file=sys.stderr)
+                return 2
         elif args.cmd == "fix":
             findings = core.audit(d, args.days, now)
             return _run_plan(args, d, lambda ex: core.fix(findings, ex))
     except (CrowdError, ValueError, OSError, requests.RequestException) as e:
-        print(f"error: {auditlog.scrub(e)}", file=sys.stderr)
+        print(f"error: {_safe(auditlog.scrub(e))}", file=sys.stderr)
         return 1
     return 0
 

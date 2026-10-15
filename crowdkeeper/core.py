@@ -84,7 +84,7 @@ def csv_safe(v):
     return "'" + v if v.startswith(_FORMULA) else v
 
 
-def _visible(v):
+def term_safe(v):
     """Turn newlines/tabs into spaces and any other control, format (bidi, zero-width) or
     line/paragraph separator character into visible U+XXXX text, so report output can't carry
     terminal escapes (ESC, OSC 8), reorder text (U+202E) or hide characters (U+200B)."""
@@ -102,7 +102,7 @@ def _visible(v):
 def md_safe(v):
     """Escape Markdown table/link/emphasis/strikethrough characters, autolinks and HTML so names
     render as plain text."""
-    s = _visible(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    s = term_safe(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     s = s.replace("\\", "\\\\").replace("`", "'")
     for ch in "|[]()!*_~":
         s = s.replace(ch, "\\" + ch)
@@ -114,7 +114,7 @@ def md_safe(v):
 
 def md_code_safe(v):
     """Make text safe inside a Markdown code span, where escapes and HTML are literal."""
-    return _visible(v).replace("`", "'")
+    return term_safe(v).replace("`", "'")
 
 
 def fmt(rows, cols, out="table"):
@@ -124,15 +124,14 @@ def fmt(rows, cols, out="table"):
         b = io.StringIO()
         w = csv.DictWriter(b, fieldnames=cols, extrasaction="ignore", lineterminator="\n")
         w.writeheader()
-        w.writerows({c: csv_safe(r.get(c, "")) for c in cols} for r in rows)
+        w.writerows({c: csv_safe(term_safe(r.get(c, ""))) for c in cols} for r in rows)
         return b.getvalue().rstrip("\n")
     if not rows:
         return "(nothing found)"
-    widths = [max(len(c), *(len(str(r.get(c, ""))) for r in rows)) for c in cols]
+    cells = [[term_safe(r.get(c, "")) for c in cols] for r in rows]
+    widths = [max(len(c), *(len(row[i]) for row in cells)) for i, c in enumerate(cols)]
     line = lambda vals: "  ".join(str(v).ljust(w) for v, w in zip(vals, widths, strict=False)).rstrip()
-    return "\n".join(
-        [line(cols), line("-" * w for w in widths)] + [line(r.get(c, "") for c in cols) for r in rows]
-    )
+    return "\n".join([line(cols), line("-" * w for w in widths)] + [line(row) for row in cells])
 
 
 def export_groups(directory):
@@ -235,9 +234,9 @@ class Executor:
         except Exception as le:  # the log itself is broken: never hide the original error
             log_error = self.log_error = le
             print(
-                f"error: {action} failed: {auditlog.safe_error(e)}\n"
-                f"error: could not write the failure to audit log {self.log_path}: "
-                f"{auditlog.safe_error(le)}",
+                f"error: {action} failed: {term_safe(auditlog.safe_error(e))}\n"
+                f"error: could not write the failure to audit log {term_safe(self.log_path)}: "
+                f"{term_safe(auditlog.safe_error(le))}",
                 file=sys.stderr,
             )
         if not isinstance(e, Exception):
@@ -296,7 +295,7 @@ def _is_marker(tok):
 
 
 def _groups_of(r):
-    """None = don't touch groups: column missing, row truncated, or a blank cell (empty,
+    """None = don't touch groups: column missing or a blank cell (empty,
     spaces, or only ';'). [] = the bare marker '-' or 'none': remove every membership.
     Otherwise the listed groups. A blank cell is never read as "remove all"."""
     v = r.get("groups")
@@ -321,17 +320,21 @@ def _groups_error(r):
 JML_ACTIONS = ("joiner", "mover", "leaver")
 
 
-def validate_jml(rows, fieldnames, known_groups, known_users=None):
+class JmlInputError(ValueError):
+    """The JML CSV content is invalid; nothing was planned or changed (CLI exit 2)."""
+
+
+def validate_jml(rows, fieldnames, known_groups, known_users=None, lines=None):
     """Check the whole CSV before any change is planned or made; raise ValueError listing every
     bad line. Checks: required columns, extra values, action, empty username, groups, and (when
     known_users is given) that each mover/leaver exists, counting users created by earlier
-    joiner rows."""
+    joiner rows. lines gives each row's real file line (default: row index + 2)."""
     missing = [c for c in JML_REQUIRED if c not in (fieldnames or [])]
     if missing:
-        raise ValueError(f"CSV header is missing required column(s): {', '.join(missing)}")
+        raise JmlInputError(f"CSV header is missing required column(s): {', '.join(missing)}")
     known, errors = set(known_groups), []
     users = None if known_users is None else set(known_users)
-    for i, r in enumerate(rows, start=2):
+    for i, r in zip(_line_nos(rows, lines), rows, strict=True):
         kind = (r.get("action") or "").strip().lower()
         name = (r.get("username") or "").strip()
         if kind not in JML_ACTIONS:
@@ -351,17 +354,25 @@ def validate_jml(rows, fieldnames, known_groups, known_users=None):
             if g not in known:
                 errors.append(f"line {i}: unknown group {g!r}")
     if errors:
-        raise ValueError("invalid JML CSV, nothing changed:\n  " + "\n  ".join(errors))
+        raise JmlInputError("invalid JML CSV, nothing changed:\n  " + "\n  ".join(errors))
 
 
-def jml(directory, rows, ex, fieldnames=None):
+def _line_nos(rows, lines):
+    if lines is None:
+        return range(2, len(rows) + 2)
+    if len(lines) != len(rows):
+        raise ValueError("lines must have one entry per row")
+    return lines
+
+
+def jml(directory, rows, ex, fieldnames=None, lines=None):
     """Rows are applied in order against a projected state, so several rows for one user
     (e.g. mover then mover back, or joiner twice) see the effect of the earlier rows."""
     if fieldnames is None:
         fieldnames = list(rows[0].keys()) if rows else list(JML_REQUIRED)
     users = {u.name: u for u in directory.users()}
-    validate_jml(rows, fieldnames, directory.groups(), users)  # before ANY ex.do()
-    for i, r in enumerate(rows, start=2):
+    validate_jml(rows, fieldnames, directory.groups(), users, lines)  # before ANY ex.do()
+    for i, r in zip(_line_nos(rows, lines), rows, strict=True):
         kind = (r.get("action") or "").strip().lower()
         name = (r.get("username") or "").strip()
         if not name:

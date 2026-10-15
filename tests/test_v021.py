@@ -58,7 +58,7 @@ def test_cli_valid_leaver_then_bad_row_changes_nothing(bad, tmp_path, monkeypatc
         f"{bad['action']},{bad['username']},{bad['groups']}\n"
     )
     log = tmp_path / "audit.json"
-    assert main(["jml", str(p), "--apply", "-y", "--log", str(log)]) == 1
+    assert main(["jml", str(p), "--apply", "-y", "--log", str(log)]) == 2  # input error
     assert "line 3" in capsys.readouterr().err
     assert d.calls == [] and not log.exists()
 
