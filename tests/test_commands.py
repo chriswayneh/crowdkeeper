@@ -393,3 +393,43 @@ def test_executor_detail_collision_kept_nested(tmp_path):
     fail = _entries(log)[-1]
     assert fail["applied_before_failure"] == 0 and "RuntimeError" in fail["error"]
     assert fail["detail"] == {"user": "bob", "error": "spoof", "applied_before_failure": 99}
+
+
+def test_run_id_distinguishes_runs_in_same_log(tmp_path):
+    log = tmp_path / "a.json"
+    for _ in range(2):
+        d = FakeWritable()
+        ex = core.Executor(d, apply=True, log_path=str(log))
+        ex.do("deactivate-user", d.deactivate, "bob", user="bob")
+    e = _entries(log)
+    assert all(x.get("run_id") for x in e) and [x["seq"] for x in e] == [1, 1, 1, 1]
+    assert e[0]["run_id"] == e[1]["run_id"] != e[2]["run_id"] == e[3]["run_id"]
+
+
+def test_applied_line_write_failure_marks_change_as_made(tmp_path, monkeypatch):
+    log = tmp_path / "a.json"
+    real = auditlog.record
+
+    def flaky(path, event, *a, **k):
+        if event == "applied":
+            raise OSError("disk full")
+        return real(path, event, *a, **k)
+    monkeypatch.setattr(auditlog, "record", flaky)
+    d = FakeWritable()
+    ex = core.Executor(d, apply=True, log_path=str(log))
+    with pytest.raises(core.PartialFailure) as ei:
+        ex.do("deactivate-user", d.deactivate, "bob", user="bob")
+    intent, fail = _entries(log)
+    assert fail["stage"] == "applied_log" and fail["change_applied"] is True
+    assert fail["applied_before_failure"] == 1 == ei.value.applied
+    assert fail["seq"] == intent["seq"] and fail["run_id"] == intent["run_id"]
+
+
+def test_change_failure_stage_not_applied(tmp_path):
+    d = FailingWritable(fail_at=0)
+    log = tmp_path / "a.json"
+    ex = core.Executor(d, apply=True, log_path=str(log))
+    with pytest.raises(core.PartialFailure):
+        ex.do("deactivate-user", d.deactivate, "bob", user="bob")
+    fail = _entries(log)[-1]
+    assert fail["stage"] == "change" and fail["change_applied"] is False

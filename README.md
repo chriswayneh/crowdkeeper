@@ -36,15 +36,20 @@ crowdkeeper audit --days 90
 
 **Audit log format:** each change writes two lines. An `intent` line is written *before* the change
 is sent to Crowd, and an `applied` line after it succeeds, so even a Ctrl-C or kill mid-change leaves
-a record. An `intent` with no matching `applied` or `failed` line (same `seq`) means the outcome is
-unknown; check that change in Crowd. The change's own fields sit under a nested `detail` object, so
-they can never overwrite the top-level fields.
+a record. An `intent` with no matching `applied` or `failed` line (same `run_id` and `seq`) means the
+outcome is unknown; check that change in Crowd. The change's own fields sit under a nested `detail` object, so
+they can never overwrite the top-level fields. `seq` restarts at 1 each run; `run_id` is a random
+per-run id, so `(run_id, seq)` identifies a change across runs appended to the same log. A `failed`
+entry's `stage` is `intent_log` (change not attempted), `change` (the Crowd call failed) or
+`applied_log` (the change *was* made, `change_applied: true`, but its `applied` line failed);
+`applied_before_failure` counts every change made in the run, including that one. This format
+replaces the single-line-per-change format of earlier versions; update any log readers.
 
 ```json
-{"ts": "2026-10-15T02:10:01+00:00", "event": "intent", "action": "deactivate-user", "seq": 1, "detail": {"user": "frank", "reason": "last login 140d ago"}}
-{"ts": "2026-10-15T02:10:01+00:00", "event": "applied", "action": "deactivate-user", "seq": 1, "detail": {"user": "frank", "reason": "last login 140d ago"}}
-{"ts": "2026-10-15T02:10:02+00:00", "event": "intent", "action": "remove-from-group", "seq": 2, "detail": {"user": "ivan", "group": "jira-users"}}
-{"ts": "2026-10-15T02:10:02+00:00", "event": "failed", "action": "remove-from-group", "seq": 2, "error": "RuntimeError: ...", "applied_before_failure": 1, "detail": {"user": "ivan", "group": "jira-users"}}
+{"ts": "2026-10-15T02:10:01+00:00", "event": "intent", "action": "deactivate-user", "seq": 1, "run_id": "9f2c...", "detail": {"user": "frank", "reason": "last login 140d ago"}}
+{"ts": "2026-10-15T02:10:01+00:00", "event": "applied", "action": "deactivate-user", "seq": 1, "run_id": "9f2c...", "detail": {"user": "frank", "reason": "last login 140d ago"}}
+{"ts": "2026-10-15T02:10:02+00:00", "event": "intent", "action": "remove-from-group", "seq": 2, "run_id": "9f2c...", "detail": {"user": "ivan", "group": "jira-users"}}
+{"ts": "2026-10-15T02:10:02+00:00", "event": "failed", "action": "remove-from-group", "seq": 2, "run_id": "9f2c...", "stage": "change", "change_applied": false, "error": "RuntimeError: ...", "applied_before_failure": 1, "detail": {"user": "ivan", "group": "jira-users"}}
 ```
 
 **Partial failures:** if a change fails partway through `jml --apply` or `fix --apply` (including

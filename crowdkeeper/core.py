@@ -1,4 +1,5 @@
 import sys
+import uuid
 import csv
 import io
 import json
@@ -110,11 +111,16 @@ class Executor:
         self.applied = 0
         self.seq = 0
         self.log_error = None
+        self.run_id = uuid.uuid4().hex  # seq restarts each run; (run_id, seq) is unique
 
-    def _fail(self, action, details, e, seq):
+    def _fail(self, action, details, e, seq, stage):
+        # stage: intent_log (change not attempted), change (call failed),
+        # applied_log (the change WAS made; only its "applied" line failed to write).
+        # applied_before_failure counts every change made so far, incl. this one if change_applied.
         log_error = None
         try:
-            auditlog.record(self.log_path, "failed", action, details, seq=seq,
+            auditlog.record(self.log_path, "failed", action, details, seq=seq, run_id=self.run_id,
+                            stage=stage, change_applied=stage == "applied_log",
                             error=auditlog.safe_error(e), applied_before_failure=self.applied)
         except Exception as le:  # the log itself is broken: never hide the original error
             log_error = self.log_error = le
@@ -132,18 +138,18 @@ class Executor:
         self.seq += 1
         seq = self.seq
         try:
-            auditlog.record(self.log_path, "intent", action, details, seq=seq)
+            auditlog.record(self.log_path, "intent", action, details, seq=seq, run_id=self.run_id)
         except Exception as e:  # can't log it, so don't do it
-            self._fail(action, details, e, seq)
+            self._fail(action, details, e, seq, "intent_log")
         try:
             fn(*args)
         except BaseException as e:  # incl. Ctrl-C
-            self._fail(action, details, e, seq)
+            self._fail(action, details, e, seq, "change")
         self.applied += 1
         try:
-            auditlog.record(self.log_path, "applied", action, details, seq=seq)
+            auditlog.record(self.log_path, "applied", action, details, seq=seq, run_id=self.run_id)
         except Exception as e:  # change happened and its intent entry is logged
-            self._fail(action, details, e, seq)
+            self._fail(action, details, e, seq, "applied_log")
 
 
 def jml(directory, rows, ex):
