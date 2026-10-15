@@ -6,9 +6,9 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 
 | Item | Details |
 | --- | --- |
-| **Latest release** | `v0.2.0` (2026-10-15): audit-log, JML safety and security fixes; see [CHANGELOG.md](CHANGELOG.md). It did not include the Phase 1 items below. |
-| **Next** | Phase 1: Harden (not started) |
-| **Next target** | `v0.3.0` (Phase 1) |
+| **Latest release** | `v0.2.1` (2026-10-15): up-front JML validation and non-interactive `--apply` refusal; see [CHANGELOG.md](CHANGELOG.md). It did not include the Phase 1 items below. |
+| **Next** | `v0.2.2` patch, then Phase 1: Harden (not started) |
+| **Next target** | `v0.2.2` (patch), then `v0.3.0` (Phase 1) |
 
 ## Phase map
 
@@ -38,6 +38,12 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 - [x] CI on Python 3.10 to 3.13 with pinned actions and least-privilege token
 
 **Done when:** every command runs in demo mode as documented and CI is green. Landed in commits `dc93a4e` to `5f917b1`, with CI added in `c64fcd8` and after. Not tagged or released.
+
+## Patch: v0.2.2
+
+**Goal:** No Python tracebacks outside apply.
+
+- [ ] Catch `KeyboardInterrupt` (and unexpected exceptions) outside apply and exit `130` with no traceback
 
 ## Phase 1: Harden (v0.3.0)
 
