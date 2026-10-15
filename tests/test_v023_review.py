@@ -269,3 +269,16 @@ def test_last_authenticated_uses_first_value(monkeypatch):
     attrs = [{"name": "lastAuthenticated", "values": ["1600000000000", "1700000000000"]}]
     (u,) = _users_client(monkeypatch, dict(_OK), attrs).users()
     assert u.last_login.year == 2020
+
+
+def test_ms_max_boundary_pinned_to_literal():
+    from datetime import datetime, timezone
+
+    assert _ms(253402300799999, "t") == datetime(9999, 12, 31, 23, 59, 59, 999000, tzinfo=timezone.utc)
+    with pytest.raises(CrowdError):
+        _ms(253402300800000, "t")
+
+
+def test_ms_rejects_16_char_in_range_digit_string():
+    with pytest.raises(CrowdError):
+        _ms("0001600000000000", "t")
