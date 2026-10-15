@@ -131,3 +131,37 @@ def test_missing_env_errors(monkeypatch, capsys):
     for k in ("CROWD_URL", "CROWD_APP", "CROWD_APP_PASSWORD", "CROWDKEEPER_DEMO"):
         monkeypatch.delenv(k, raising=False)
     assert main(["audit"]) == 1
+
+
+def test_csv_output_neutralises_formulas():
+    out = core.fmt([{"type": "=HYPERLINK(\"x\")", "subject": "+cmd", "detail": "-1", "fix": "@a"}],
+                   ["type", "subject", "detail", "fix"], "csv")
+    row = out.splitlines()[1]
+    assert row.startswith("\"'=HYPERLINK") and ",'+cmd,'-1,'@a" in row
+
+
+def test_jml_rejects_malformed_rows(d, tmp_path):
+    with pytest.raises(ValueError, match="missing username"):
+        core.jml(d, [{"action": "joiner"}], core.Executor(d))
+    p = tmp_path / "bad.csv"
+    p.write_text("foo,bar\n1,2\n")
+    assert main(["--demo", "jml", str(p)]) == 1
+
+
+def test_confirm_eof_aborts(monkeypatch):
+    from crowdkeeper import cli
+
+    def eof(_):
+        raise EOFError
+    monkeypatch.setattr("builtins.input", eof)
+    assert cli._confirm(type("A", (), {"yes": False})(), 3) is False
+
+
+def test_report_escapes_markdown():
+    assert core.md_safe("a|b`c") == "a\\|b'c"
+
+
+def test_http_url_warns(caplog):
+    from crowdkeeper.client import CrowdClient
+    CrowdClient("http://crowd.local", "app", "pw")
+    assert "not https" in caplog.text and "pw" not in caplog.text

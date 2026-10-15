@@ -6,6 +6,8 @@ import os
 import sys
 
 from . import __version__, core
+import requests
+
 from .client import CrowdClient, CrowdError
 from .demo import NOW, DemoDirectory
 
@@ -21,7 +23,10 @@ def _dir(args):
 def _confirm(args, n):
     if args.yes:
         return True
-    return input(f"Apply {n} change(s) to Crowd? Type 'yes' to continue: ").strip() == "yes"
+    try:
+        return input(f"Apply {n} change(s) to Crowd? Type 'yes' to continue: ").strip() == "yes"
+    except EOFError:  # non-interactive without --yes: treat as "no"
+        return False
 
 
 def _run_plan(args, d, planner):
@@ -112,7 +117,7 @@ def main(argv=None):
         elif args.cmd == "fix":
             findings = core.audit(d, args.days, now)
             return _run_plan(args, d, lambda ex: core.fix(findings, ex))
-    except (CrowdError, ValueError, OSError) as e:
+    except (CrowdError, ValueError, OSError, requests.RequestException) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     return 0

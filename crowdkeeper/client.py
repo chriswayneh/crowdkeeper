@@ -21,6 +21,8 @@ class CrowdClient:
     def __init__(self, url, app, password, timeout=30):
         if not (url and app and password):
             raise CrowdError("Set CROWD_URL, CROWD_APP and CROWD_APP_PASSWORD (or use --demo).")
+        if not url.lower().startswith("https://"):
+            log.warning("CROWD_URL is not https; the application password will be sent in clear text")
         self.url = url.rstrip("/") + BASE
         self.s = requests.Session()
         self.s.auth = (app, password)  # never logged

@@ -30,6 +30,20 @@ def audit(directory, days=90, now=None):
     return findings
 
 
+_FORMULA = ("=", "+", "-", "@", "\t", "\r")
+
+
+def csv_safe(v):
+    """Neutralise spreadsheet formula injection (CWE-1236) in CSV cells."""
+    v = "" if v is None else str(v)
+    return "'" + v if v.startswith(_FORMULA) else v
+
+
+def md_safe(v):
+    """Escape characters that would break Markdown tables/code spans."""
+    return str(v).replace("\\", "\\\\").replace("|", "\\|").replace("`", "'").replace("\n", " ")
+
+
 def fmt(rows, cols, out="table"):
     if out == "json":
         return json.dumps(rows, indent=2, default=str)
@@ -37,7 +51,7 @@ def fmt(rows, cols, out="table"):
         b = io.StringIO()
         w = csv.DictWriter(b, fieldnames=cols, extrasaction="ignore", lineterminator="\n")
         w.writeheader()
-        w.writerows(rows)
+        w.writerows({c: csv_safe(r.get(c, "")) for c in cols} for r in rows)
         return b.getvalue().rstrip("\n")
     if not rows:
         return "(nothing found)"
@@ -87,9 +101,11 @@ class Executor:
 
 def jml(directory, rows, ex):
     users = {u.name: u for u in directory.users()}
-    for r in rows:
-        kind = r["action"].strip().lower()
-        name = r["username"].strip()
+    for i, r in enumerate(rows, start=2):
+        kind = (r.get("action") or "").strip().lower()
+        name = (r.get("username") or "").strip()
+        if not name:
+            raise ValueError(f"CSV line {i}: missing username")
         groups = [g for g in (r.get("groups") or "").replace(";", " ").split() if g]
         cur = users.get(name)
         if kind == "joiner":
@@ -144,9 +160,9 @@ def report(directory, days=90, now=None):
              f"| Active users with no groups | {count('no-groups')} |",
              f"| Disabled users still in groups | {count('disabled-in-groups')} |",
              f"| Empty groups | {count('empty-group')} |", "", "## Findings", ""]
-    lines += [f"- **{x['type']}** `{x['subject']}`: {x['detail']} (recommended: {x['fix']})"
+    lines += [f"- **{x['type']}** `{md_safe(x['subject'])}`: {md_safe(x['detail'])} (recommended: {x['fix']})"
               for x in f] or ["No findings."]
     lines += ["", "## Group sizes", "", "| Group | Members |", "|---|---|"]
-    lines += [f"| {g} | {len(m)} |" for g, m in export_groups(directory)["groups"].items()]
+    lines += [f"| {md_safe(g)} | {len(m)} |" for g, m in export_groups(directory)["groups"].items()]
     lines += ["", "_Produced by crowdkeeper. Remediate with `crowdkeeper fix` (dry-run by default)._"]
     return "\n".join(lines) + "\n"
