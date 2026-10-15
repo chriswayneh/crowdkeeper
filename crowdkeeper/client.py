@@ -134,7 +134,7 @@ class CrowdClient:
                     None if created is None else datetime.fromtimestamp(int(created) / 1000, tz=timezone.utc),
                 )
             )
-        return res
+        return sorted(res, key=lambda u: u.name)  # stable order: the drift check compares plans
 
     def groups(self):
         return sorted(g["name"] for g in self._search("group"))
@@ -166,6 +166,11 @@ class CrowdClient:
         u = self._req("GET", "/user", params={"username": user})
         if not isinstance(u, dict) or u.get("name") != user:
             raise CrowdError(f"unexpected Crowd response for user {user!r}; not deactivated")
-        body = {k: u.get(k, "") for k in ("name", "first-name", "last-name", "display-name", "email")}
+        # Crowd's PUT /user overwrites the profile fields, so echo every one back unchanged;
+        # never default a missing one to "" (that would blank it in Crowd).
+        fields = ("name", "first-name", "last-name", "display-name", "email")
+        if not all(isinstance(u.get(k), str) for k in fields):
+            raise CrowdError(f"incomplete Crowd profile for user {user!r}; not deactivated")
+        body = {k: u[k] for k in fields}
         body["active"] = False
         self._req("PUT", "/user", params={"username": user}, json=body)

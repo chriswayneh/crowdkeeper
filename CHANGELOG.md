@@ -13,7 +13,10 @@ All notable changes to this project are documented here. This project follows
 - `--apply` re-reads the directory and re-plans right before applying; if the plan differs from the
   confirmed preview, it exits 1 and changes nothing. `fix` now recomputes the audit for that check.
 - Deactivation sends only the identity fields and `active: false`, not the whole fetched user, and
-  refuses to write if Crowd's answer isn't the requested user.
+  refuses to write if Crowd's answer isn't the requested user or lacks any profile field (Crowd's
+  `PUT /user` overwrites them, so a missing one is never sent as blank).
+- Users read from Crowd are sorted by name, so the re-check before apply doesn't abort just because
+  Crowd returned the same users in a different order.
 - Malformed Crowd responses (missing or non-list `users`/`groups`/`attributes`, entries without a
   name) raise an error instead of reading as empty results (a falsely clean audit or zero removals).
 - `jml` CSV headers are matched after stripping spaces, so `groups ` is no longer silently ignored,
