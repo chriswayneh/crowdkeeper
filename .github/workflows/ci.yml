@@ -21,4 +21,6 @@ jobs:
       - run: pip install -e ".[test]"
       - run: ruff check .
       - run: ruff format --check .
+      - run: pip install mypy
+      - run: mypy crowdkeeper tests
       - run: pytest -v --cov=crowdkeeper --cov-branch --cov-report=term-missing
