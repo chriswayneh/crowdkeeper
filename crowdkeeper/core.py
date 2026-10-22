@@ -168,19 +168,22 @@ def export_groups(directory):
 
 
 def _snapshot_groups(snap, which):
+    """Validate one export; `which` (usually its file path) is named in the error."""
     if not isinstance(snap, dict) or not isinstance(snap.get("groups"), dict):
         raise ValueError(
-            f"{which} snapshot: expected an object with a 'groups' mapping "
+            f"{which}: not a valid groups export: expected an object with a 'groups' mapping "
             "(made by `crowdkeeper groups export`)"
         )
     for g, members in snap["groups"].items():
         if not isinstance(members, list) or not all(isinstance(m, str) for m in members):
-            raise ValueError(f"{which} snapshot: group {g!r} must map to a list of usernames")
+            raise ValueError(
+                f"{which}: not a valid groups export: group {g!r} must map to a list of usernames"
+            )
     return snap["groups"]
 
 
-def diff_groups(a, b):
-    ga, gb = _snapshot_groups(a, "first"), _snapshot_groups(b, "second")
+def diff_groups(a, b, a_name="first snapshot", b_name="second snapshot"):
+    ga, gb = _snapshot_groups(a, a_name), _snapshot_groups(b, b_name)
     rows = []
     for g in sorted(set(ga) | set(gb)):
         if g not in ga:

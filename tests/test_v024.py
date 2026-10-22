@@ -86,3 +86,41 @@ def test_diff_error_file_name_is_terminal_safe(name, shown, content, which, tmp_
     err = capsys.readouterr().err
     assert f"error: {tmp_path}/{shown}: not a valid groups export: " in err
     assert "\x1b" not in err and "\u202e" not in err
+
+
+@pytest.mark.parametrize("which", ["a", "b"])
+def test_non_utf8_diff_file_is_named(which, tmp_path, capsys):
+    good = tmp_path / "good.json"
+    good.write_text(json.dumps(GOOD))
+    bad = tmp_path / "utf16.json"
+    bad.write_bytes(b"\xff\xfe{\x00}\x00")
+    files = [str(bad), str(good)] if which == "a" else [str(good), str(bad)]
+    assert cli.main(["groups", "diff", *files]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith(f"error: {bad}: not a valid groups export: ")
+
+
+@pytest.mark.parametrize("content", ["{not json", "[1, 2]", '{"g": 5}'])
+@pytest.mark.parametrize("which", ["a", "b"])
+def test_evil_file_name_escaped(content, which, tmp_path, capsys):
+    good = tmp_path / "good.json"
+    good.write_text(json.dumps(GOOD))
+    bad = tmp_path / "ev\x1b[31mil\u202e.json"
+    bad.write_text(content)
+    files = [str(bad), str(good)] if which == "a" else [str(good), str(bad)]
+    assert cli.main(["groups", "diff", *files]) == 1
+    err = capsys.readouterr().err
+    assert f"error: {tmp_path}/ev\\u001b[31mil\\u202e.json: not a valid groups export: " in err
+    assert "\x1b" not in err and "\u202e" not in err
+    assert "snapshot" not in err
+
+
+@pytest.mark.parametrize("shape", [[1, 2], {"g": 5}])
+@pytest.mark.parametrize("which", ["a", "b"])
+def test_core_names_the_path(shape, which):
+    from crowdkeeper import core
+
+    args = (shape, GOOD, "x.json", "y.json") if which == "a" else (GOOD, shape, "x.json", "y.json")
+    named = ("x" if which == "a" else "y") + r"\.json: not a valid groups export"
+    with pytest.raises(ValueError, match=named):
+        core.diff_groups(*args)
