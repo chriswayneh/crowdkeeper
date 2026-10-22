@@ -9,8 +9,9 @@ All notable changes to this project are documented here. This project follows
 - Ctrl-C outside `--apply` (for example during a live scan, a dry run or `groups diff`) now prints
   `Interrupted. Nothing was changed.` and exits 130 instead of showing a traceback. Ctrl-C during
   `--apply` is unchanged: it is logged and exits 1.
-- A `groups diff` file that is not valid JSON or not UTF-8 now gives an error that names the file
-  (exit 1).
+- A `groups diff` file that is not valid JSON, not UTF-8, or not the shape `groups export` writes
+  (for example a list, a string or a missing `groups` mapping) now gives
+  `error: <path>: not a valid groups export: ...` and exits 1. The file name is terminal-safe.
 - The test suite passes mypy: the untyped `cmarkgfm` import is marked and a test table is annotated.
 
 ### Changed

@@ -253,9 +253,11 @@ def main(argv=None):
             for path in (args.a, args.b):
                 with open(path) as fh:
                     try:
-                        exports.append(json.load(fh))
-                    except ValueError as e:  # JSONDecodeError and UnicodeDecodeError
+                        snap = json.load(fh)
+                        core._snapshot_groups(snap, "export")  # shape check, so the file is named
+                    except ValueError as e:  # JSONDecodeError, UnicodeDecodeError, wrong shape
                         raise ValueError(f"{path}: not a valid groups export: {e}") from None
+                exports.append(snap)
             rows = core.diff_groups(*exports)
             print(core.fmt(rows, ["change", "group", "user"], args.output))
             return 0
