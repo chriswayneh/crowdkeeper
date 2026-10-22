@@ -1,10 +1,10 @@
 # crowdkeeper
 
-Access hygiene and joiner, mover, leaver (JML) CLI for Atlassian Crowd admins: finds inactive and orphaned accounts, tracks group drift, and applies JML changes with an audit log.
-
 [![CI](https://github.com/chriswayneh/crowdkeeper/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chriswayneh/crowdkeeper/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+
+Access hygiene and joiner, mover, leaver (JML) CLI for Atlassian Crowd admins: finds inactive and orphaned accounts, tracks group drift, and applies JML changes with an audit log.
 
 It talks to Crowd's REST API (`/rest/usermanagement/1`) using application authentication. `jml` and `fix` are dry-run by default.
 
@@ -18,6 +18,23 @@ crowdkeeper --demo audit
 ```
 
 Requires Python 3.10 or newer. `--demo` uses a built-in fake directory, so no Crowd server is needed.
+
+### Development
+```bash
+pip install -e ".[test]"
+pytest
+```
+
+## Features
+
+- **Access audit:** finds inactive users, users with no recorded login (flagged for review only), active users in no groups, disabled users still in groups, and empty groups.
+- **Group drift:** exports direct group membership to JSON and diffs two exports into granted, revoked, added and removed changes.
+- **JML from CSV:** joiners are created and added to groups, movers get their full target group set, leavers are deactivated and then stripped of groups. The CSV is validated strictly before anything is planned.
+- **Safe by default:** `jml` and `fix` are dry runs unless you pass `--apply` and confirm. Before applying, crowdkeeper re-reads Crowd and stops if the plan changed.
+- **Audit log:** every applied change writes `intent` and `applied` (or `failed`) JSON lines. Passwords are never logged.
+- **Auditor report:** a one-page Markdown summary with findings and group sizes.
+- **Demo mode:** a built-in fake directory of 25 users and 8 groups, so you can try it without a Crowd server.
+- **Terminal-safe output:** control, bidi and zero-width characters in names are escaped in tables, CSV, reports and errors.
 
 ## Usage
 
@@ -304,17 +321,35 @@ flowchart LR
     core --> outp["Table, JSON, CSV or Markdown"]
 ```
 
+## Built with
+
+**Languages** (GitHub language stats, checked 2026-10-21): Python 100%
+
+**AI tools:**
+
+- Grok Bot (confirmed by Chris, 2026-10-21)
+- Cursor cloud agents (confirmed by Chris, 2026-10-21)
+
+Commits made with AI help carry a `Co-authored-by` trailer from now on. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned phases and [CHANGELOG.md](CHANGELOG.md) for released versions.
 
 See [ROADMAP.md](ROADMAP.md). See [CHANGELOG.md](CHANGELOG.md) and the GitHub releases for the current version. Phase 0 is done and Phase 1 (harden live mode) is next.
 
-## Development
+## Security
 
-```bash
-pip install -e ".[test]"
-pytest
-```
+See [SECURITY.md](SECURITY.md) for supported versions and how to report a vulnerability privately.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), including how to credit AI tools in commits.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Acknowledgments
+
+README layout adapted from [Best-README-Template](https://github.com/othneildrew/Best-README-Template) by Othneil Drew.
