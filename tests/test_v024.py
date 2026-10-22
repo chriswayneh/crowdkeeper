@@ -28,7 +28,7 @@ def test_ctrl_c_outside_apply_exits_130(argv, monkeypatch, capsys):
 
 def test_ctrl_c_in_groups_diff_exits_130(tmp_path, monkeypatch, capsys):
     a = tmp_path / "a.json"
-    a.write_text("{}")
+    a.write_text(json.dumps({"groups": {}}))
 
     def boom(*a, **k):
         raise KeyboardInterrupt
