@@ -93,7 +93,7 @@ def test_version_matches_pyproject():
 
     text = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text()
     assert f'version = "{crowdkeeper.__version__}"' in text
-    assert crowdkeeper.__version__ == "0.2.3"
+    assert crowdkeeper.__version__ == "0.2.4"
 
 
 VALID_CSVS = [

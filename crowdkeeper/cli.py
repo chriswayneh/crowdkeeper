@@ -249,8 +249,14 @@ def main(argv=None):
 
     try:
         if args.cmd == "groups" and args.gcmd == "diff":
-            with open(args.a) as fa, open(args.b) as fb:
-                rows = core.diff_groups(json.load(fa), json.load(fb))
+            exports = []
+            for path in (args.a, args.b):
+                with open(path) as fh:
+                    try:
+                        exports.append(json.load(fh))
+                    except ValueError as e:  # JSONDecodeError and UnicodeDecodeError
+                        raise ValueError(f"{path}: not a valid groups export: {e}") from None
+            rows = core.diff_groups(*exports, args.a, args.b)  # shape errors name the path
             print(core.fmt(rows, ["change", "group", "user"], args.output))
             return 0
         d, now = _dir(args)
@@ -288,6 +294,9 @@ def main(argv=None):
     except (CrowdError, ValueError, OSError, requests.RequestException) as e:
         print(f"error: {_safe(auditlog.scrub(e))}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:  # outside --apply; an interrupted apply is handled in _run_plan
+        print("\nInterrupted. Nothing was changed.", file=sys.stderr)
+        return 130
     return 0
 
 

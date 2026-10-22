@@ -3,6 +3,27 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.4] - 2026-10-22
+
+### Fixed
+- Ctrl-C outside `--apply` (for example during a live scan, a dry run or `groups diff`) now prints
+  `Interrupted. Nothing was changed.` and exits 130 instead of showing a traceback. Ctrl-C during
+  `--apply` is unchanged: it is logged and exits 1.
+- A `groups diff` file that is not valid JSON, not UTF-8, or not the shape `groups export` writes
+  (for example a list, a string or a missing `groups` mapping) now gives
+  `error: <path>: not a valid groups export: ...` and exits 1. The file name is terminal-safe.
+- The test suite passes mypy: the untyped `cmarkgfm` import is marked and a test table is annotated.
+
+### Changed
+- Docs: README theme and CONTRIBUTING update (#10); the two README roadmap paragraphs are merged
+  and the exit code table lists 130.
+
+### Security
+- CI: Dependabot config for pip and GitHub Actions (#7).
+- CI: `actions/checkout` bumped to 7.0.1 (#9) and `actions/setup-python` to 7.0.0 (#8), both
+  pinned by commit SHA.
+- CI: `persist-credentials: false` on checkout, so the job token is not left in the git config (#11).
+
 ## [0.2.3] - 2026-10-15
 
 ### Changed

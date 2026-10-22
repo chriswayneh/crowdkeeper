@@ -4,7 +4,7 @@ import html as htmllib
 import re
 from pathlib import Path
 
-import cmarkgfm
+import cmarkgfm  # type: ignore[import-untyped]
 import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st

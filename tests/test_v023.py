@@ -158,7 +158,7 @@ def test_deactivate_rejects_bad_or_mismatched_user(monkeypatch, got):
 
 
 # 5. malformed responses raise CrowdError instead of looking empty
-BAD = [None, [], {}, {"users": None}, {"users": {}}, {"users": [1]}, {"users": [{"x": 1}]}, "x"]
+BAD: list[object] = [None, [], {}, {"users": None}, {"users": {}}, {"users": [1]}, {"users": [{"x": 1}]}, "x"]
 
 
 @pytest.mark.parametrize("resp", BAD)

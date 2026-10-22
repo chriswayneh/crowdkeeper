@@ -71,6 +71,7 @@ and during the apply itself is not detected.
 | 0 | Success, a dry run, nothing to do, or declined at the interactive prompt |
 | 1 | A Crowd, network or file error (including a redirect, a non-2xx answer or a malformed response), an invalid `groups diff` snapshot, the directory changing between the confirmed preview and the apply (nothing changed), or a partial apply (including Ctrl-C during `--apply`) |
 | 2 | A usage error (bad arguments, from argparse), a malformed JML CSV (empty file with no header, a duplicate, blank or missing required header, broken quoting, a row with more or fewer values than the header, text that isn't UTF-8, or a control or invisible character such as NUL, tab, ESC, U+202E or U+200B in any field), an invalid JML row (unknown action or group, missing username, a mover or leaver who doesn't exist), or `--apply` on non-TTY stdin without `-y` |
+| 130 | Ctrl-C outside `--apply` (for example during a live scan or a dry run). Nothing was changed |
 
 **Audit log format:** each change writes two lines. An `intent` line is written *before* the change
 is sent to Crowd, and an `applied` line after it succeeds, so even a Ctrl-C or kill mid-change leaves
@@ -334,9 +335,7 @@ Commits made with AI help carry a `Co-authored-by` trailer from now on. See [CON
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for planned phases and [CHANGELOG.md](CHANGELOG.md) for released versions.
-
-See [ROADMAP.md](ROADMAP.md). See [CHANGELOG.md](CHANGELOG.md) and the GitHub releases for the current version. Phase 0 is done and Phase 1 (harden live mode) is next.
+See [ROADMAP.md](ROADMAP.md) for planned phases, and [CHANGELOG.md](CHANGELOG.md) and the GitHub releases for released versions. Phase 0 is done and Phase 1 (harden live mode) is next.
 
 ## Security
 
