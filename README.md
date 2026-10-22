@@ -22,6 +22,9 @@ Requires Python 3.10 or newer. `--demo` uses a built-in fake directory, so no Cr
 ### Development
 ```bash
 pip install -e ".[test]"
+ruff check .
+ruff format --check .
+mypy crowdkeeper tests
 pytest
 ```
 
