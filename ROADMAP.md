@@ -6,7 +6,7 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 
 | Item | Details |
 | --- | --- |
-| **Latest release** | `v0.2.3` (2026-10-15): live-mode safety fixes from a verified Codex review (leaver order, no redirects, drift re-check, strict Crowd validation); see [CHANGELOG.md](CHANGELOG.md). It did not include the Phase 1 items below. |
+| **Latest release** | `v0.2.4` (2026-10-22): Ctrl-C outside `--apply` exits `130`, malformed `groups diff` files are named, mypy-clean tests, CI and Dependabot hardening; see [CHANGELOG.md](CHANGELOG.md). Other Phase 1 items below are still open. |
 | **Next** | Phase 1: Harden |
 | **Next target** | `v0.3.0` (Phase 1) |
 
@@ -62,11 +62,21 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 - [x] `report` escapes Markdown link/emphasis characters, HTML and autolinks (URLs, `www.`, fuzzy domains, e-mail) in names, checked with cmark-gfm and markdown-it linkify
 - [x] Terminal-safe output: one `term_safe` helper escapes control, bidi and zero-width characters in the table, CSV, report and error messages
 
+## Patch: v0.2.4 (shipped 2026-10-22)
+
+**Goal:** Close QE findings on the post-v0.2.3 main and harden CI.
+
+- [x] Ctrl-C outside `--apply` exits `130` with a one-line message and no traceback
+- [x] A malformed `groups diff` file is named in the error message (exit `1`)
+- [x] Tests pass mypy with no errors
+- [x] Dependabot for pip and GitHub Actions, `actions/checkout` 7.0.1, `actions/setup-python` 7.0.0, and `persist-credentials: false` in CI
+
 ## Phase 1: Harden (v0.3.0)
 
 **Goal:** Live mode you can point at a large production directory without surprises.
 
-- [ ] Catch `KeyboardInterrupt` (and unexpected exceptions) outside apply and exit `130` with no traceback (moved from v0.2.2)
+- [x] Catch `KeyboardInterrupt` outside apply and exit `130` with no traceback (moved from v0.2.2, shipped in v0.2.4)
+- [ ] Catch unexpected exceptions outside apply with a short message instead of a traceback
 - [ ] Retries for 429, 5xx and connection errors with `Retry-After` and capped backoff
 - [ ] Fewer round trips for last-login lookups so big directories scan quickly
 - [ ] Documented exit codes for usage, Crowd and partial apply errors
