@@ -6,11 +6,14 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 from .models import User
 
 log = logging.getLogger("crowdkeeper")
 BASE = "/rest/usermanagement/1"
+_RETRY_STATUSES = (429, 500, 502, 503, 504)
 
 
 class CrowdError(RuntimeError):
@@ -82,6 +85,25 @@ class CrowdClient:
         self.s = requests.Session()
         self.s.auth = (app, password)  # never logged
         self.s.headers.update({"Accept": "application/json", "Content-Type": "application/json"})
+        retry = Retry(
+            total=3,
+            connect=3,
+            read=3,
+            status=3,
+            other=0,
+            redirect=0,
+            allowed_methods=frozenset({"GET"}),
+            status_forcelist=_RETRY_STATUSES,
+            backoff_factor=0.5,
+            backoff_max=8,
+            retry_after_max=30,
+            respect_retry_after_header=True,
+            raise_on_status=False,
+        )
+        # Only safe reads are retried. A write can succeed at Crowd even if its response is
+        # lost, so replaying POST/PUT/DELETE could duplicate a change.
+        self.s.mount("https://", HTTPAdapter(max_retries=retry))
+        self.s.mount("http://", HTTPAdapter(max_retries=retry))
         self.timeout = timeout
 
     @classmethod
