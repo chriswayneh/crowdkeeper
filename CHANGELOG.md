@@ -5,6 +5,7 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+- Crowd client: expand user attributes in the paged search so `lastAuthenticated` no longer needs one request per user.
 - Crowd client: retry safe GETs up to three times on 429, 5xx and connection errors; cap `Retry-After` at 30 seconds and exponential backoff at 8 seconds. Writes are not replayed.
 - CLI: unexpected errors outside `--apply` exit cleanly with a short message; `--verbose` includes a traceback
 - CI: mypy on the package and tests

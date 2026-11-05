@@ -14,6 +14,7 @@ from .models import User
 log = logging.getLogger("crowdkeeper")
 BASE = "/rest/usermanagement/1"
 _RETRY_STATUSES = (429, 500, 502, 503, 504)
+_MISSING = object()
 
 
 class CrowdError(RuntimeError):
@@ -105,6 +106,7 @@ class CrowdClient:
         self.s.mount("https://", HTTPAdapter(max_retries=retry))
         self.s.mount("http://", HTTPAdapter(max_retries=retry))
         self.timeout = timeout
+        self._expanded_user_attributes: dict[str, list[object]] | None = None
 
     @classmethod
     def from_env(cls, insecure=False):
@@ -135,19 +137,44 @@ class CrowdClient:
             d = self._req(
                 "GET",
                 "/search",
-                params={"entity-type": entity, "expand": entity, "start-index": start, "max-results": 1000},
+                params={
+                    "entity-type": entity,
+                    "expand": "user.attributes" if entity == "user" else entity,
+                    "start-index": start,
+                    "max-results": 1000,
+                },
             )
             items = _items(d, entity + "s", f"{entity} search")
             out += items
             if len(items) < 1000:
+                if entity == "user":
+                    expanded = {}
+                    for user in out:
+                        expanded.setdefault(user["name"], []).append(user.get("attributes", _MISSING))
+                    self._expanded_user_attributes = expanded
                 return out
             start += 1000
 
     def _last_login(self, name):
-        d = self._req("GET", "/user/attribute", params={"username": name})
+        cache = self._expanded_user_attributes
+        if cache is not None and cache.get(name):
+            d = cache[name].pop(0)
+            if d is _MISSING:
+                raise CrowdError(
+                    f"unexpected Crowd response for attributes of {name}: user expansion omitted attributes"
+                )
+        else:
+            d = self._req("GET", "/user/attribute", params={"username": name})
         if d is None or (isinstance(d, dict) and "attributes" not in d):
             return None  # no attributes recorded: login activity unknown (flagged for review only)
-        for a in _items(d, "attributes", f"attributes of {name}"):
+        attributes = d.get("attributes") if isinstance(d, dict) else None
+        if isinstance(attributes, dict):
+            attributes = attributes.get("attributes", _MISSING)
+        if not isinstance(attributes, list):
+            raise CrowdError(
+                f"unexpected Crowd response for attributes of {name}: expected an attributes list"
+            )
+        for a in _items({"attributes": attributes}, "attributes", f"attributes of {name}"):
             if a.get("name") == "lastAuthenticated":
                 vals = a.get("values")
                 if not isinstance(vals, list) or not vals:
@@ -172,24 +199,29 @@ class CrowdClient:
             start += page
 
     def users(self):
+        users = self._search("user")
         res = []
-        for u in self._search("user"):
-            n = u["name"]
-            what = f"user {n}"
-            if not isinstance(u.get("active"), bool):  # no default: a missing flag must not read as active
-                raise CrowdError(f"unexpected Crowd response for {what}: 'active' is not true/false")
-            created = u.get("created-date")
-            res.append(
-                User(
-                    n,
-                    _str(u, "display-name", what),
-                    _str(u, "email", what),
-                    u["active"],
-                    self._last_login(n),
-                    self._direct_groups(n),
-                    None if created is None else _ms(created, f"created-date of {n}"),
+        try:
+            for u in users:
+                n = u["name"]
+                what = f"user {n}"
+                # A missing active flag must not be treated as active.
+                if not isinstance(u.get("active"), bool):
+                    raise CrowdError(f"unexpected Crowd response for {what}: 'active' is not true/false")
+                created = u.get("created-date")
+                res.append(
+                    User(
+                        n,
+                        _str(u, "display-name", what),
+                        _str(u, "email", what),
+                        u["active"],
+                        self._last_login(n),
+                        self._direct_groups(n),
+                        None if created is None else _ms(created, f"created-date of {n}"),
+                    )
                 )
-            )
+        finally:
+            self._expanded_user_attributes = None
         return sorted(res, key=lambda u: u.name)  # stable order: the drift check compares plans
 
     def groups(self):
