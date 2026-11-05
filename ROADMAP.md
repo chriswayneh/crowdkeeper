@@ -80,7 +80,7 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 - [x] Retry safe GET requests for 429, 5xx and connection errors with capped `Retry-After` and backoff; writes are never replayed
 - [x] Expand user attributes in the paged search to fetch `lastAuthenticated` without one extra request per user
 - [x] Documented exit codes for usage, Crowd and partial apply errors
-- [ ] Tests against recorded Crowd API responses
+- [x] Fixture-backed tests for documented Crowd REST response shapes
 - [x] First tag, GitHub release and `CHANGELOG.md` (v0.2.0)
 
 **Done when:** an audit of a directory with thousands of users finishes cleanly under throttling and `v0.3.0` is tagged.

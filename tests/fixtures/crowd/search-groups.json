@@ -1,0 +1,6 @@
+{
+  "groups": [
+    {"name": "crowd-users", "description": "Crowd users", "active": true},
+    {"name": "jira-users", "description": "Jira users", "active": true}
+  ]
+}
