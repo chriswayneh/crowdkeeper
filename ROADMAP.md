@@ -79,7 +79,7 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 - [x] Catch unexpected exceptions outside apply with a short message; `--verbose` includes a traceback
 - [x] Retry safe GET requests for 429, 5xx and connection errors with capped `Retry-After` and backoff; writes are never replayed
 - [x] Expand user attributes in the paged search to fetch `lastAuthenticated` without one extra request per user
-- [ ] Documented exit codes for usage, Crowd and partial apply errors
+- [x] Documented exit codes for usage, Crowd and partial apply errors
 - [ ] Tests against recorded Crowd API responses
 - [x] First tag, GitHub release and `CHANGELOG.md` (v0.2.0)
 
