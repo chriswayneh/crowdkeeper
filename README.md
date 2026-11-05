@@ -1,12 +1,22 @@
+<div align="center">
+
 # crowdkeeper
 
 [![CI](https://github.com/chriswayneh/crowdkeeper/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chriswayneh/crowdkeeper/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-Access hygiene and joiner, mover, leaver (JML) CLI for Atlassian Crowd admins: finds inactive and orphaned accounts, tracks group drift, and applies JML changes with an audit log.
+### Access hygiene and joiner, mover, leaver automation for Atlassian Crowd.
 
-It talks to Crowd's REST API (`/rest/usermanagement/1`) using application authentication. `jml` and `fix` are dry-run by default.
+A CLI for Crowd administrators to audit accounts, review direct group membership, track access drift, and plan JML changes through Crowd's REST API.
+
+</div>
+
+---
+
+Use `crowdkeeper --demo` to try the audit and JML workflows against a built-in sample directory. Live mode connects to Crowd's user management REST API with application authentication.
+
+**Scope and safety:** Membership checks cover direct group memberships only. Accounts with no recorded login are flagged for review, never automatically deactivated. `jml` and `fix` preview changes by default and require explicit confirmation to apply them.
 
 ## Quick start
 
@@ -17,7 +27,7 @@ pip install .
 crowdkeeper --demo audit
 ```
 
-Requires Python 3.10 or newer. `--demo` uses a built-in fake directory, so no Crowd server is needed.
+Requires Python 3.10 or newer. The demo needs no Crowd server.
 
 ### Development
 ```bash
