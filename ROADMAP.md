@@ -76,7 +76,7 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 **Goal:** Live mode you can point at a large production directory without surprises.
 
 - [x] Catch `KeyboardInterrupt` outside apply and exit `130` with no traceback (moved from v0.2.2, shipped in v0.2.4)
-- [ ] Catch unexpected exceptions outside apply with a short message instead of a traceback
+- [x] Catch unexpected exceptions outside apply with a short message; `--verbose` includes a traceback
 - [ ] Retries for 429, 5xx and connection errors with `Retry-After` and capped backoff
 - [ ] Fewer round trips for last-login lookups so big directories scan quickly
 - [ ] Documented exit codes for usage, Crowd and partial apply errors
