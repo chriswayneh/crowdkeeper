@@ -197,6 +197,8 @@ expected shape (for example no `users` or `groups` list) is an error too, never 
 Safe GET requests retry up to three times after throttling, server errors or connection errors,
 honoring `Retry-After` up to 30 seconds and capped exponential backoff. Writes are not replayed,
 since Crowd may have applied a change even if its response was lost.
+User searches expand attributes, including `lastAuthenticated`, so login activity is fetched with the
+search instead of one additional request per user.
 Deactivation sends Crowd only the user's name, first and last name, display name, e-mail and
 `active: false`, not the whole fetched record; Crowd has no conditional update for users, so a
 profile edit made at the same moment can still be overwritten.
