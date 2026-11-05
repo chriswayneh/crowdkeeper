@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sys
+import traceback
 import unicodedata
 
 import requests
@@ -297,6 +298,11 @@ def main(argv=None):
     except KeyboardInterrupt:  # outside --apply; an interrupted apply is handled in _run_plan
         print("\nInterrupted. Nothing was changed.", file=sys.stderr)
         return 130
+    except Exception as e:
+        print(f"error: unexpected error: {_safe(auditlog.scrub(e))}", file=sys.stderr)
+        if args.verbose:
+            traceback.print_exc(file=sys.stderr)
+        return 1
     return 0
 
 

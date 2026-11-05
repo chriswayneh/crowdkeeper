@@ -5,6 +5,7 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+- CLI: unexpected errors outside `--apply` exit cleanly with a short message; `--verbose` includes a traceback
 - CI: mypy on the package and tests
 
 ## [0.2.4] - 2026-10-22
