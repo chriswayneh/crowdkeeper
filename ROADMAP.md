@@ -77,7 +77,7 @@ Plan for crowdkeeper by phase. Each phase ships something you can run from the c
 
 - [x] Catch `KeyboardInterrupt` outside apply and exit `130` with no traceback (moved from v0.2.2, shipped in v0.2.4)
 - [x] Catch unexpected exceptions outside apply with a short message; `--verbose` includes a traceback
-- [ ] Retries for 429, 5xx and connection errors with `Retry-After` and capped backoff
+- [x] Retry safe GET requests for 429, 5xx and connection errors with capped `Retry-After` and backoff; writes are never replayed
 - [ ] Fewer round trips for last-login lookups so big directories scan quickly
 - [ ] Documented exit codes for usage, Crowd and partial apply errors
 - [ ] Tests against recorded Crowd API responses
