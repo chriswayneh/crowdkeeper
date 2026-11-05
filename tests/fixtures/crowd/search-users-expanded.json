@@ -1,0 +1,45 @@
+{
+  "users": [
+    {
+      "name": "alice",
+      "first-name": "Alice",
+      "last-name": "Admin",
+      "display-name": "Alice Admin",
+      "email": "alice@example.test",
+      "active": true,
+      "created-date": 1760486400000,
+      "attributes": {
+        "link": {
+          "rel": "self",
+          "href": "https://crowd.example.test/rest/usermanagement/1/user/attribute?username=alice"
+        },
+        "attributes": [
+          {
+            "name": "lastAuthenticated",
+            "values": ["1760486400000"]
+          },
+          {
+            "name": "department",
+            "values": ["Engineering"]
+          }
+        ]
+      }
+    },
+    {
+      "name": "bob",
+      "first-name": "Bob",
+      "last-name": "Builder",
+      "display-name": "Bob Builder",
+      "email": "bob@example.test",
+      "active": false,
+      "created-date": 1760572800000,
+      "attributes": {
+        "link": {
+          "rel": "self",
+          "href": "https://crowd.example.test/rest/usermanagement/1/user/attribute?username=bob"
+        },
+        "attributes": []
+      }
+    }
+  ]
+}
