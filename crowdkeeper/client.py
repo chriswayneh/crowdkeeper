@@ -171,7 +171,9 @@ class CrowdClient:
         if isinstance(attributes, dict):
             attributes = attributes.get("attributes", _MISSING)
         if not isinstance(attributes, list):
-            raise CrowdError(f"unexpected Crowd response for attributes of {name}: expected an attributes list")
+            raise CrowdError(
+                f"unexpected Crowd response for attributes of {name}: expected an attributes list"
+            )
         for a in _items({"attributes": attributes}, "attributes", f"attributes of {name}"):
             if a.get("name") == "lastAuthenticated":
                 vals = a.get("values")
@@ -203,7 +205,8 @@ class CrowdClient:
             for u in users:
                 n = u["name"]
                 what = f"user {n}"
-                if not isinstance(u.get("active"), bool):  # no default: a missing flag must not read as active
+                # A missing active flag must not be treated as active.
+                if not isinstance(u.get("active"), bool):
                     raise CrowdError(f"unexpected Crowd response for {what}: 'active' is not true/false")
                 created = u.get("created-date")
                 res.append(
